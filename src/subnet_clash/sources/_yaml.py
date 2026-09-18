@@ -15,8 +15,10 @@ key (what ``cat a.yaml b.yaml`` produces). A merge key (``<<: *defaults``) is re
 composer leaves it as an ordinary ``<<`` entry, so merging it would be our own invention, and
 ignoring it would drop whatever the merged mapping carried.
 
-Anchors and aliases *are* resolved by the composer; an aliased value is reported at the line
-where it is written out.
+Anchors and aliases *are* resolved by the composer, which hands the *same* node back for every
+alias to it. Converting that node once per alias is what makes an expansion bomb ("billion
+laughs") exponential, so every node is converted once and memoised by ``id``, and the size its
+aliases expand to is capped -- see :data:`MAX_NODES`.
 """
 
 from __future__ import annotations
@@ -27,7 +29,12 @@ import yaml
 
 from ..errors import InputError
 
+#: Ceiling on the number of nodes a document expands to once its aliases are followed. A netplan
+#: file of any realistic size is three orders of magnitude below this; only a bomb reaches it.
+MAX_NODES = 100_000
+
 MULTI_DOC = "multiple YAML documents are not supported"
+TOO_LARGE = f"YAML expands to more than {MAX_NODES} nodes once aliases are resolved"
 RECURSIVE = "recursive YAML anchor"
 MERGE = "YAML merge keys ('<<') are not supported"
 
@@ -68,35 +75,74 @@ def _at(node: yaml.Node, filename: str) -> str:
     return f"{filename}:{_line(node)}"
 
 
-def _convert(node: yaml.Node, filename: str, seen: frozenset[int]) -> Node:
-    """Turn one composer node into our own, remembering where it started.
+def _convert(
+    node: yaml.Node,
+    filename: str,
+    seen: frozenset[int],
+    cache: dict[int, tuple[Node, int]],
+) -> tuple[Node, int]:
+    """Turn one composer node into ours, with the number of nodes it expands to.
+
+    ``cache`` holds every node already converted, keyed by ``id``. The composer gives the same
+    node object back for every alias to an anchor, so without that cache a document like
+    ``&a [x, x]`` / ``&b [*a, *a]`` / ``&c [*b, *b]`` would be walked 2**depth times -- the
+    billion-laughs expansion. Converting each node once makes the cost linear in the nodes that
+    are actually written, and the returned weight (what the tree expands to once aliases are
+    followed, which is what the readers walk) is capped at :data:`MAX_NODES`.
 
     ``seen`` holds the collection nodes on the path to here, so a recursive anchor
     (``&loop [*loop]``) is refused instead of recursing forever. Two *sibling* aliases to the
-    same node are fine: each one is converted on its own path.
+    same node are fine: the first converts it, the second gets the cached result.
     """
+    cached = cache.get(id(node))
+    if cached is not None:
+        return cached
+
     if isinstance(node, yaml.ScalarNode):
-        if node.tag == NULL_TAG:
-            return Scalar(_line(node), "", null=True)
-        return Scalar(_line(node), node.value)
+        scalar = (
+            Scalar(_line(node), "", null=True)
+            if node.tag == NULL_TAG
+            else Scalar(_line(node), node.value)
+        )
+        cache[id(node)] = (scalar, 1)
+        return scalar, 1
+
     if id(node) in seen:
         raise InputError(RECURSIVE, _at(node, filename))
-    seen = seen | {id(node)}
+    inner = seen | {id(node)}
+    weight = 1
+    converted: Node
+
     if isinstance(node, yaml.SequenceNode):
-        return Sequence(_line(node), [_convert(item, filename, seen) for item in node.value])
-    if isinstance(node, yaml.MappingNode):
-        items: dict[str, Node] = {}
+        items: list[Node] = []
+        for item in node.value:
+            child, child_weight = _convert(item, filename, inner, cache)
+            items.append(child)
+            weight += child_weight
+            if weight > MAX_NODES:
+                raise InputError(TOO_LARGE, _at(node, filename))
+        converted = Sequence(_line(node), items)
+    elif isinstance(node, yaml.MappingNode):
+        pairs: dict[str, Node] = {}
         for key_node, value_node in node.value:
             if not isinstance(key_node, yaml.ScalarNode):
                 raise InputError("mapping key must be a plain value", _at(key_node, filename))
             if key_node.tag == MERGE_TAG:
                 raise InputError(MERGE, _at(key_node, filename))
             key = key_node.value
-            if key in items:
+            if key in pairs:
                 raise InputError(f"duplicate key {key!r}", _at(key_node, filename))
-            items[key] = _convert(value_node, filename, seen)
-        return Mapping(_line(node), items)
-    raise InputError(f"unsupported YAML node {node.tag}", _at(node, filename))
+            child, child_weight = _convert(value_node, filename, inner, cache)
+            pairs[key] = child
+            weight += 1 + child_weight
+            if weight > MAX_NODES:
+                raise InputError(TOO_LARGE, _at(node, filename))
+        converted = Mapping(_line(node), pairs)
+    else:
+        raise InputError(f"unsupported YAML node {node.tag}", _at(node, filename))
+
+    cache[id(node)] = (converted, weight)
+    return converted, weight
 
 
 def _describe(exc: yaml.YAMLError) -> str:
@@ -129,4 +175,4 @@ def parse(text: str, filename: str) -> Node | None:
         raise InputError(MULTI_DOC, where)
     if not documents or documents[0] is None:
         return None
-    return _convert(documents[0], filename, frozenset())
+    return _convert(documents[0], filename, frozenset(), {})[0]

@@ -98,6 +98,13 @@ def test_merge_key_netplan_exits_two_instead_of_reading_zero_addresses(capsys):
     assert "merge keys" in err
 
 
+def test_anchor_bomb_netplan_exits_two_instead_of_expanding(capsys):
+    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/anchor-bomb.yaml")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "expands to more than" in err
+
+
 def test_flow_written_netplan_is_compared_not_skipped(capsys):
     """Flow mappings, multi-line flow sequences and aliases all have to reach the comparison."""
     code, out, _err = run(

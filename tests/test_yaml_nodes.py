@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
+from conftest import FIXTURES
 from subnet_clash.errors import InputError
 from subnet_clash.sources._yaml import Mapping, Scalar, Sequence, parse
 
@@ -162,3 +165,28 @@ def test_a_recursive_anchor_is_rejected_instead_of_recursing_forever():
 def test_a_quoted_star_is_still_an_ordinary_string():
     doc = parse("search: ['*.example.com']\n", "x.yaml")
     assert [item.value for item in doc.items["search"].items] == ["*.example.com"]
+
+
+def test_an_expansion_bomb_is_refused_by_size_not_walked():
+    """The billion-laughs shape: each level aliases the one below nine times."""
+    text = (FIXTURES / "bad" / "anchor-bomb.yaml").read_text(encoding="utf-8")
+    started = time.monotonic()
+    with pytest.raises(InputError) as excinfo:
+        parse(text, "anchor-bomb.yaml")
+    assert "expands to more than" in str(excinfo.value)
+    assert "anchor-bomb.yaml:" in str(excinfo.value)
+    # Nine levels expand to ~387M nodes; converting each alias again would never get here.
+    assert time.monotonic() - started < 5
+
+
+def test_the_same_anchor_used_many_times_is_not_a_bomb():
+    aliases = "\n".join(f"  eth{index}: *lan" for index in range(200))
+    doc = parse(f"devices:\n  lan: &lan [10.77.0.1/24]\n{aliases}\n", "x.yaml")
+    devices = doc.items["devices"]
+    assert len(devices.items) == 201
+    assert [item.value for item in devices.items["eth199"].items] == ["10.77.0.1/24"]
+
+
+def test_a_converted_node_is_shared_between_its_aliases():
+    doc = parse("a: &lan [10.77.0.1/24]\nb: *lan\n", "x.yaml")
+    assert doc.items["a"] is doc.items["b"]
