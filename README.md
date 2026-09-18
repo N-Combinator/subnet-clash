@@ -38,7 +38,7 @@ subnet-clash check \
 | --- | --- | --- |
 | `--wg` | WireGuard config | `[Interface] Address`, `[Peer] AllowedIPs` |
 | `--docker` | saved `docker network inspect` JSON | every `IPAM.Config[].Subnet` and `.IPRange` |
-| `--netplan` | netplan YAML | per-device `addresses`, static `routes[].to` |
+| `--netplan` | netplan YAML | per-device `addresses` (plain and address-options form), static `routes[].to` |
 | `--nm` | NetworkManager keyfile | `[ipv4]`/`[ipv6]` `addressN`, `routeN` |
 | `--dnsmasq` | dnsmasq config | `dhcp-range=` pools |
 
@@ -217,6 +217,18 @@ plus the `intersection` networks:
   than half-read — quote the value if you want a literal `*` or `&`. Concatenating two netplan
   files into one is therefore an error (duplicate `network:`), not a silent read of the last one
   — pass each file with its own `--netplan`.
+- Both documented `addresses:` forms are read: the plain `- 10.100.1.38/24` and the
+  address-options one MAAS writes, where the address is the key —
+
+  ```yaml
+  addresses:
+    - 10.100.1.38/24:
+        lifetime: 0
+        label: "maas"
+  ```
+
+  Anything else under `addresses:` or `routes:` — a value that is not a list, a list item that is
+  not an address, a `to:` that is not a single address — is exit code 2, never a skipped address.
 
 ## Development
 

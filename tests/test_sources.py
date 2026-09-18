@@ -142,6 +142,45 @@ def test_netplan_compact_form_and_ipv6(load):
     }
 
 
+def test_netplan_reads_the_address_options_form(load):
+    """`- 10.8.0.5/24:` with lifetime/label is an address, not something to drop silently."""
+    entries = load("netplan", "netplan-maas.yaml")
+    assert located(entries) == {
+        ("10.8.0.5/24", "netplan-maas.yaml:9"),
+        ("10.8.0.6/24", "netplan-maas.yaml:12"),
+        ("10.90.0.0/16", "netplan-maas.yaml:14"),
+    }
+    keys = {entry.location.key for entry in entries}
+    assert "network.ethernets.ens3.addresses[0]" in keys
+
+
+def test_netplan_addresses_must_be_a_list(load):
+    with pytest.raises(InputError) as excinfo:
+        load("netplan", "bad/addresses-not-a-list.yaml")
+    assert "'addresses:' must be a list" in str(excinfo.value)
+    assert "bad/addresses-not-a-list.yaml:5" in str(excinfo.value)
+
+
+def test_netplan_route_target_must_be_a_single_address(load):
+    with pytest.raises(InputError) as excinfo:
+        load("netplan", "bad/route-to-not-a-scalar.yaml")
+    assert "route 'to:' must be a single address" in str(excinfo.value)
+
+
+def test_netplan_refuses_an_address_item_it_cannot_read(load):
+    text = "network:\n  ethernets:\n    eth0:\n      addresses:\n        - - 10.64.0.1/24\n"
+    with pytest.raises(InputError) as excinfo:
+        get_reader("netplan")(text, "nested.yaml")
+    assert "neither an address nor address options" in str(excinfo.value)
+
+
+def test_netplan_device_group_must_be_a_mapping(load):
+    text = "network:\n  ethernets:\n    - eth0\n"
+    with pytest.raises(InputError) as excinfo:
+        get_reader("netplan")(text, "group.yaml")
+    assert "must be a mapping of device name to settings" in str(excinfo.value)
+
+
 def test_netplan_without_network_key_is_rejected(load):
     with pytest.raises(InputError) as excinfo:
         load("netplan", "bad/no-network.yaml")

@@ -1,0 +1,15 @@
+# The address-options form netplan documents and MAAS generates: the address is the key, and
+# lifetime/label hang under it.
+network:
+  version: 2
+  ethernets:
+    ens3:
+      dhcp4: false
+      addresses:
+        - 10.8.0.5/24:
+            lifetime: 0
+            label: "maas"
+        - 10.8.0.6/24
+      routes:
+        - to: 10.90.0.0/16
+          via: 10.8.0.1

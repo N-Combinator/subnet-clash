@@ -98,6 +98,37 @@ def test_anchored_netplan_exits_two_instead_of_reading_zero_addresses(capsys):
     assert "anchors and aliases" in err
 
 
+def test_netplan_address_options_are_compared_not_dropped(capsys):
+    """The MAAS `- 10.8.0.5/24:` form must reach the comparison, not vanish into a clean run."""
+    code, out, _err = run(
+        capsys,
+        [
+            "check",
+            "--netplan",
+            fixture_path("netplan-maas.yaml"),
+            "--docker",
+            fixture_path("docker-net.json"),
+            "--format",
+            "json",
+        ],
+    )
+    assert code == EXIT_CLASH
+    payload = json.loads(out)
+    lines = {c["a"]["line"] for c in payload["clashes"]} | {
+        c["b"]["line"] for c in payload["clashes"]
+    }
+    assert 9 in lines
+
+
+def test_netplan_addresses_that_are_not_a_list_exit_two(capsys):
+    code, out, err = run(
+        capsys, ["check", "--netplan", fixture_path("bad/addresses-not-a-list.yaml")]
+    )
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "'addresses:' must be a list" in err
+
+
 def test_a_source_that_yields_no_ranges_is_reported_on_stderr(capsys, tmp_path):
     empty = tmp_path / "wg-nothing.conf"
     empty.write_text("[Interface]\nPrivateKey = x\n", encoding="utf-8")
