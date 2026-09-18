@@ -234,6 +234,31 @@ def test_an_undetermined_dnsmasq_range_is_reported_and_never_compared(capsys):
     assert "`10.60.0.0`" in out
 
 
+def test_a_commented_dnsmasq_pool_is_still_compared(capsys):
+    """The comment used to eat the netmask, and a half-read pool exits 0 instead of erroring."""
+    code, out, _err = run(
+        capsys,
+        [
+            "check",
+            "--dnsmasq",
+            fixture_path("dnsmasq-comments.conf"),
+            "--wg",
+            fixture_path("wg-lab.conf"),
+            "--format",
+            "json",
+        ],
+    )
+    assert code == EXIT_CLASH
+    payload = json.loads(out)
+    assert payload["summary"]["undetermined"] == 0
+    assert len(payload["clashes"]) == 1
+    clash = payload["clashes"][0]
+    assert clash["kind"] == "identical"
+    assert clash["a"]["file"].endswith("dnsmasq-comments.conf")
+    assert (clash["a"]["line"], clash["a"]["range"]) == (3, "10.70.0.0/255.255.255.0")
+    assert (clash["b"]["line"], clash["b"]["range"]) == (2, "10.70.0.1/24")
+
+
 def test_no_sources_exits_two(capsys):
     code, _out, err = run(capsys, ["check"])
     assert code == EXIT_INPUT_ERROR
