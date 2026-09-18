@@ -33,7 +33,7 @@ _SKIP_ROUTE_TARGETS = {"default", "0.0.0.0/0", "::/0"}
 
 def _is_empty(node: Node | None) -> bool:
     """True for a key written with no value at all (``eth0:``), which netplan reads as null."""
-    return isinstance(node, Scalar) and not node.value
+    return isinstance(node, Scalar) and node.null
 
 
 def _sequence(node: Node | None, key: str, filename: str) -> Sequence | None:

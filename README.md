@@ -11,7 +11,8 @@ fight, quoting the file and line number of both.
 - **Reads files only.** No sockets, no `docker` or `ip` invocation, no look at the live system.
   Everything it knows comes from paths you name (or stdin), so the same inputs always give the same
   report, on your laptop and in CI.
-- **Standard library only.** `ipaddress`, `json`, `argparse` — no runtime dependencies.
+- **One dependency.** PyYAML, and only for reading netplan files — netplan is YAML, and a YAML
+  file deserves a YAML parser. Every range computation is standard-library `ipaddress`.
 
 ## Install
 
@@ -21,7 +22,8 @@ pip install subnet-clash
 pip install .
 ```
 
-Python 3.11+. Installing provides the `subnet-clash` command; `python -m subnet_clash` works too.
+Python 3.11+, and PyYAML, which pip pulls in. Installing provides the `subnet-clash` command;
+`python -m subnet_clash` works too.
 
 ## Usage
 
@@ -173,7 +175,7 @@ exits `2`, not `1`.
 
 ```console
 $ subnet-clash check --netplan broken.yaml
-subnet-clash: error: broken.yaml:2: tab used for indentation (YAML forbids it)
+subnet-clash: error: broken.yaml:2: invalid YAML: while scanning for the next token: found character '\t' that cannot start any token
 $ echo $?
 2
 ```
@@ -211,12 +213,16 @@ plus the `intersection` networks:
   save `docker network inspect` to a file and pass it in.
 - Windows networking and VPNs other than WireGuard are out of scope.
 - dnsmasq `conf-file`/`conf-dir` includes are not followed; name those files yourself.
-- The bundled YAML reader covers the netplan dialect (block mappings, block and flow sequences,
-  plain scalars). Anchors and aliases (`&lan` / `*lan`, including `<<:` merge keys),
-  multi-document files, duplicate keys and block scalars are rejected with exit code 2 rather
-  than half-read — quote the value if you want a literal `*` or `&`. Concatenating two netplan
-  files into one is therefore an error (duplicate `network:`), not a silent read of the last one
-  — pass each file with its own `--netplan`.
+- netplan files go through PyYAML, so every YAML spelling of a device is read: block and flow
+  mappings, block and flow sequences (including a flow sequence broken over several lines), and
+  anchors and aliases, which are resolved — an aliased address is reported at the line where the
+  anchor writes it out. Three things are still refused with exit code 2 rather than half-read: a
+  file holding more than one document, a duplicate mapping key, and a merge key (`<<: *defaults`,
+  which the composer does not expand for us — ignoring it would drop whatever it carried).
+  Concatenating two netplan files into one is therefore an error (duplicate `network:`), not a
+  silent read of the last one — pass each file with its own `--netplan`.
+- NetworkManager keyfiles are INI, not YAML, and are read line by line rather than with
+  `configparser`, which does not report the line a value sits on.
 - Both documented `addresses:` forms are read: the plain `- 10.100.1.38/24` and the
   address-options one MAAS writes, where the address is the key —
 

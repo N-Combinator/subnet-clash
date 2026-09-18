@@ -1,9 +1,0 @@
-# Legal YAML, outside this reader's subset: the alias would have to be resolved to see that
-# both devices claim 10.77.0.1/24.
-network:
-  version: 2
-  ethernets:
-    eth0:
-      addresses: &lan [10.77.0.1/24]
-    eth1:
-      addresses: *lan

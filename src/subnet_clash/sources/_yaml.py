@@ -1,29 +1,48 @@
-"""A deliberately small YAML-subset reader that remembers line numbers.
+"""netplan YAML read with PyYAML, keeping the line number of every node.
 
-v0.1 ships with the standard library only, so there is no PyYAML. netplan files use a narrow
-dialect -- nested block mappings, block sequences, flow sequences, plain scalars -- and that is
-exactly what this module understands. Anything outside that subset raises
-:class:`~subnet_clash.errors.InputError`, so the CLI fails loudly (exit 2) instead of silently
-reading half a file.
+netplan files are YAML, so they are parsed by a YAML library rather than by a hand-written
+subset reader. The one thing ``yaml.safe_load`` throws away is *where* each value sat, and every
+finding has to name ``file:line`` on both sides -- so the stream is composed into a node tree
+(:func:`yaml.compose_all`) and the composer's start marks are carried into the three small node
+types below, which is all the readers need to walk.
 
-Not supported, and rejected: anchors/aliases, multi-line block scalars, multiple documents,
-duplicate keys, tab indentation. Flow mappings are the one thing kept as opaque scalar text.
+PyYAML is the only runtime dependency, and only the YAML layer uses it: every range computation
+stays on the standard library's ``ipaddress``.
+
+Two things are still refused rather than accepted, because both mean the file on disk is not the
+file the author thinks it is: a stream holding more than one document, and a duplicate mapping
+key (what ``cat a.yaml b.yaml`` produces). A merge key (``<<: *defaults``) is refused too: the
+composer leaves it as an ordinary ``<<`` entry, so merging it would be our own invention, and
+ignoring it would drop whatever the merged mapping carried.
+
+Anchors and aliases *are* resolved by the composer; an aliased value is reported at the line
+where it is written out.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+import yaml
+
 from ..errors import InputError
 
 MULTI_DOC = "multiple YAML documents are not supported"
-ANCHOR = "YAML anchors and aliases are not supported"
+RECURSIVE = "recursive YAML anchor"
+MERGE = "YAML merge keys ('<<') are not supported"
+
+#: Tag PyYAML resolves ``eth0:``, ``~`` and ``null`` to.
+NULL_TAG = "tag:yaml.org,2002:null"
+#: Tag PyYAML gives the ``<<`` key.
+MERGE_TAG = "tag:yaml.org,2002:merge"
 
 
 @dataclass(frozen=True)
 class Scalar:
     line: int
     value: str
+    #: True for a key written with no value at all (``eth0:``), ``~`` or ``null``.
+    null: bool = False
 
 
 @dataclass(frozen=True)
@@ -41,207 +60,73 @@ class Sequence:
 Node = Scalar | Mapping | Sequence
 
 
-@dataclass(frozen=True)
-class _Line:
-    lineno: int
-    indent: int
-    content: str
-    is_item: bool
-    item_col: int
+def _line(node: yaml.Node) -> int:
+    return node.start_mark.line + 1
 
 
-def _strip_comment(raw: str) -> str:
-    quote: str | None = None
-    for i, ch in enumerate(raw):
-        if quote:
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-        elif ch == "#" and (i == 0 or raw[i - 1] in " \t"):
-            return raw[:i]
-    return raw
+def _at(node: yaml.Node, filename: str) -> str:
+    return f"{filename}:{_line(node)}"
 
 
-def _mkline(lineno: int, indent: int, content: str) -> _Line:
-    is_item = content == "-" or content.startswith("- ")
-    if is_item:
-        rest = content[1:]
-        item_col = indent + 1 + (len(rest) - len(rest.lstrip(" ")))
-    else:
-        item_col = indent
-    return _Line(lineno, indent, content, is_item, item_col)
+def _convert(node: yaml.Node, filename: str, seen: frozenset[int]) -> Node:
+    """Turn one composer node into our own, remembering where it started.
 
-
-def _tokenize(text: str, filename: str) -> list[_Line]:
-    """Split the text into meaningful lines, rejecting anything but a single document.
-
-    A file may open with ``---`` and close with ``...``, but a second document -- another
-    ``---``, or content after the ``...`` -- is refused. Reading only one document out of
-    several is exactly the silent half-read this reader exists to avoid.
+    ``seen`` holds the collection nodes on the path to here, so a recursive anchor
+    (``&loop [*loop]``) is refused instead of recursing forever. Two *sibling* aliases to the
+    same node are fine: each one is converted on its own path.
     """
-    lines: list[_Line] = []
-    started = False
-    ended = False
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        body = _strip_comment(raw).rstrip()
-        if not body.strip():
-            continue
-        marker = body.strip()
-        if marker == "---":
-            if started or ended:
-                raise InputError(MULTI_DOC, f"{filename}:{lineno}")
-            started = True
-            continue
-        if marker == "...":
-            if ended:
-                raise InputError(MULTI_DOC, f"{filename}:{lineno}")
-            ended = True
-            continue
-        if ended:
-            raise InputError(MULTI_DOC, f"{filename}:{lineno}")
-        started = True
-        prefix = body[: len(body) - len(body.lstrip(" \t"))]
-        if "\t" in prefix:
-            raise InputError("tab used for indentation (YAML forbids it)", f"{filename}:{lineno}")
-        stripped = body[len(prefix) :]
-        indent = len(prefix)
-        lines.append(_mkline(lineno, indent, stripped))
-    return lines
+    if isinstance(node, yaml.ScalarNode):
+        if node.tag == NULL_TAG:
+            return Scalar(_line(node), "", null=True)
+        return Scalar(_line(node), node.value)
+    if id(node) in seen:
+        raise InputError(RECURSIVE, _at(node, filename))
+    seen = seen | {id(node)}
+    if isinstance(node, yaml.SequenceNode):
+        return Sequence(_line(node), [_convert(item, filename, seen) for item in node.value])
+    if isinstance(node, yaml.MappingNode):
+        items: dict[str, Node] = {}
+        for key_node, value_node in node.value:
+            if not isinstance(key_node, yaml.ScalarNode):
+                raise InputError("mapping key must be a plain value", _at(key_node, filename))
+            if key_node.tag == MERGE_TAG:
+                raise InputError(MERGE, _at(key_node, filename))
+            key = key_node.value
+            if key in items:
+                raise InputError(f"duplicate key {key!r}", _at(key_node, filename))
+            items[key] = _convert(value_node, filename, seen)
+        return Mapping(_line(node), items)
+    raise InputError(f"unsupported YAML node {node.tag}", _at(node, filename))
 
 
-def _unquote(value: str) -> str:
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-        return value[1:-1]
-    return value
+def _describe(exc: yaml.YAMLError) -> str:
+    """PyYAML's own diagnosis, which is more precise than anything we would write."""
+    parts = [
+        str(part) for part in (getattr(exc, "context", None), getattr(exc, "problem", None)) if part
+    ]
+    return f"invalid YAML: {': '.join(parts)}" if parts else f"invalid YAML: {exc}"
 
 
-def _split_key(content: str) -> tuple[str, str] | None:
-    """Split ``key: value`` on the first structural colon. ``None`` when there is no key."""
-    quote: str | None = None
-    for i, ch in enumerate(content):
-        if quote:
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-        elif ch in "[{":
-            return None
-        elif ch == ":" and (i + 1 == len(content) or content[i + 1] == " "):
-            return _unquote(content[:i]), content[i + 1 :].strip()
-    return None
-
-
-def _split_flow(body: str) -> list[str]:
-    parts: list[str] = []
-    current: list[str] = []
-    quote: str | None = None
-    for ch in body:
-        if quote:
-            current.append(ch)
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-            current.append(ch)
-        elif ch == ",":
-            parts.append("".join(current))
-            current = []
-        else:
-            current.append(ch)
-    parts.append("".join(current))
-    return [p for p in (p.strip() for p in parts) if p]
-
-
-def _scalar(value: str, lineno: int, filename: str) -> Scalar:
-    """Build a scalar, refusing an anchor definition (``&lan``) or an alias (``*lan``).
-
-    Resolving them would mean implementing a second half of YAML; treating them as ordinary text
-    is worse, because ``addresses: *lan`` then reads as zero addresses and the file looks clean.
-    """
-    if value.startswith(("&", "*")):
-        raise InputError(ANCHOR, f"{filename}:{lineno}")
-    return Scalar(lineno, _unquote(value))
-
-
-def _inline(value: str, lineno: int, filename: str) -> Node:
-    if value.startswith("[") and value.endswith("]"):
-        return Sequence(lineno, [_scalar(p, lineno, filename) for p in _split_flow(value[1:-1])])
-    return _scalar(value, lineno, filename)
-
-
-def _parse_block(
-    lines: list[_Line], pos: int, indent: int, filename: str, *, allow_scalar: bool = False
-) -> tuple[Node, int]:
-    head = lines[pos]
-    if head.is_item:
-        return _parse_sequence(lines, pos, indent, filename)
-    if _split_key(head.content) is None:
-        if not allow_scalar:
-            raise InputError(
-                f"expected 'key: value', got {head.content!r}", f"{filename}:{head.lineno}"
-            )
-        return _scalar(head.content, head.lineno, filename), pos + 1
-    return _parse_mapping(lines, pos, indent, filename)
-
-
-def _parse_mapping(lines: list[_Line], pos: int, indent: int, filename: str) -> tuple[Node, int]:
-    items: dict[str, Node] = {}
-    line0 = lines[pos].lineno
-    while pos < len(lines) and lines[pos].indent == indent and not lines[pos].is_item:
-        line = lines[pos]
-        split = _split_key(line.content)
-        if split is None:
-            raise InputError(
-                f"expected 'key: value', got {line.content!r}", f"{filename}:{line.lineno}"
-            )
-        key, value = split
-        if key in items:
-            raise InputError(f"duplicate key {key!r}", f"{filename}:{line.lineno}")
-        if value:
-            items[key] = _inline(value, line.lineno, filename)
-            pos += 1
-            continue
-        nxt = lines[pos + 1] if pos + 1 < len(lines) else None
-        if nxt is not None and (nxt.indent > indent or (nxt.indent == indent and nxt.is_item)):
-            items[key], pos = _parse_block(lines, pos + 1, nxt.indent, filename)
-        else:
-            items[key] = Scalar(line.lineno, "")
-            pos += 1
-    return Mapping(line0, items), pos
-
-
-def _parse_sequence(lines: list[_Line], pos: int, indent: int, filename: str) -> tuple[Node, int]:
-    items: list[Node] = []
-    line0 = lines[pos].lineno
-    while pos < len(lines) and lines[pos].indent == indent and lines[pos].is_item:
-        head = lines[pos]
-        rest = head.content[1:].strip()
-        sub: list[_Line] = []
-        if rest:
-            sub.append(_mkline(head.lineno, head.item_col, rest))
-        end = pos + 1
-        while end < len(lines) and lines[end].indent > head.indent:
-            sub.append(lines[end])
-            end += 1
-        if not sub:
-            raise InputError("empty list item", f"{filename}:{head.lineno}")
-        node, _ = _parse_block(sub, 0, sub[0].indent, filename, allow_scalar=True)
-        items.append(node)
-        pos = end
-    return Sequence(line0, items), pos
+def _where(exc: yaml.YAMLError, filename: str) -> str:
+    mark = getattr(exc, "problem_mark", None) or getattr(exc, "context_mark", None)
+    return f"{filename}:{mark.line + 1}" if mark is not None else filename
 
 
 def parse(text: str, filename: str) -> Node | None:
-    """Parse a netplan-flavoured YAML document. Returns ``None`` for an empty file."""
-    lines = _tokenize(text, filename)
-    if not lines:
+    """Parse a netplan YAML document. Returns ``None`` for an empty file."""
+    try:
+        documents = list(yaml.compose_all(text, Loader=yaml.SafeLoader))
+    except yaml.YAMLError as exc:
+        # Content after a `...` end marker never even reaches compose_all as a second document:
+        # the parser stops at the token that would have to open one.
+        if "document start" in str(getattr(exc, "problem", "") or ""):
+            raise InputError(MULTI_DOC, _where(exc, filename)) from exc
+        raise InputError(_describe(exc), _where(exc, filename)) from exc
+
+    if len(documents) > 1:
+        second = documents[1]
+        where = _at(second, filename) if second is not None else filename
+        raise InputError(MULTI_DOC, where)
+    if not documents or documents[0] is None:
         return None
-    node, pos = _parse_block(lines, 0, lines[0].indent, filename)
-    if pos != len(lines):
-        leftover = lines[pos]
-        raise InputError(
-            f"unexpected indentation at {leftover.content!r}", f"{filename}:{leftover.lineno}"
-        )
-    return node
+    return _convert(documents[0], filename, frozenset())

@@ -154,6 +154,36 @@ def test_netplan_reads_the_address_options_form(load):
     assert "network.ethernets.ens3.addresses[0]" in keys
 
 
+def test_netplan_reads_flow_mappings_and_multiline_flow_sequences(load):
+    """netplan is YAML, so every YAML spelling of a device has to reach the comparison."""
+    entries = load("netplan", "netplan-flow.yaml")
+    assert located(entries) == {
+        ("10.30.0.1/24", "netplan-flow.yaml:7"),
+        ("10.31.0.1/24", "netplan-flow.yaml:10"),
+        ("10.32.0.1/24", "netplan-flow.yaml:11"),
+        ("10.33.0.0/16", "netplan-flow.yaml:14"),
+    }
+
+
+def test_netplan_alias_gives_both_devices_the_anchored_address(load):
+    entries = load("netplan", "netplan-flow.yaml")
+    scopes = {entry.scope for entry in entries if entry.raw == "10.30.0.1/24"}
+    assert scopes == {"netplan-flow.yaml#eth0", "netplan-flow.yaml#eth2"}
+
+
+def test_netplan_merge_key_is_rejected_not_read_as_an_empty_device(load):
+    with pytest.raises(InputError) as excinfo:
+        load("netplan", "bad/merge-key.yaml")
+    assert "merge keys" in str(excinfo.value)
+    assert "bad/merge-key.yaml:9" in str(excinfo.value)
+
+
+def test_netplan_recursive_anchor_is_rejected(load):
+    with pytest.raises(InputError) as excinfo:
+        load("netplan", "bad/recursive-anchor.yaml")
+    assert "recursive YAML anchor" in str(excinfo.value)
+
+
 def test_netplan_addresses_must_be_a_list(load):
     with pytest.raises(InputError) as excinfo:
         load("netplan", "bad/addresses-not-a-list.yaml")
@@ -172,6 +202,7 @@ def test_netplan_refuses_an_address_item_it_cannot_read(load):
     with pytest.raises(InputError) as excinfo:
         get_reader("netplan")(text, "nested.yaml")
     assert "neither an address nor address options" in str(excinfo.value)
+    assert "nested.yaml:5" in str(excinfo.value)
 
 
 def test_netplan_device_group_must_be_a_mapping(load):

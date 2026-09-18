@@ -1,0 +1,5 @@
+network: &loop
+  ethernets:
+    eth0:
+      addresses: [10.71.0.1/24]
+  parent: *loop

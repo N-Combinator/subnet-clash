@@ -74,7 +74,7 @@ def test_bad_cidr_exits_two(capsys):
 def test_tab_indented_yaml_exits_two(capsys):
     code, _out, err = run(capsys, ["check", "--netplan", fixture_path("bad/tabs.yaml")])
     assert code == EXIT_INPUT_ERROR
-    assert "tab used for indentation" in err
+    assert "invalid YAML" in err and "tabs.yaml:2" in err
 
 
 def test_multi_document_netplan_exits_two(capsys):
@@ -91,11 +91,24 @@ def test_concatenated_netplan_files_exit_two(capsys):
     assert "duplicate key 'network'" in err
 
 
-def test_anchored_netplan_exits_two_instead_of_reading_zero_addresses(capsys):
-    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/anchors.yaml")])
+def test_merge_key_netplan_exits_two_instead_of_reading_zero_addresses(capsys):
+    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/merge-key.yaml")])
     assert code == EXIT_INPUT_ERROR
     assert out == ""
-    assert "anchors and aliases" in err
+    assert "merge keys" in err
+
+
+def test_flow_written_netplan_is_compared_not_skipped(capsys):
+    """Flow mappings, multi-line flow sequences and aliases all have to reach the comparison."""
+    code, out, _err = run(
+        capsys, ["check", "--netplan", fixture_path("netplan-flow.yaml"), "--format", "json"]
+    )
+    assert code == EXIT_CLASH
+    payload = json.loads(out)
+    assert payload["summary"]["ranges"] == 5
+    # eth0's anchored address and eth2's alias to it are the same block on two devices.
+    identical = [c for c in payload["clashes"] if c["kind"] == "identical"]
+    assert [c["a"]["range"] for c in identical] == ["10.30.0.1/24"]
 
 
 def test_netplan_address_options_are_compared_not_dropped(capsys):
