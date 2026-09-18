@@ -1,0 +1,47 @@
+[
+  {
+    "Name": "bridge",
+    "Id": "0f1e2d3c4b5a",
+    "Created": "2026-09-01T10:00:00.000000000Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "172.17.0.0/16",
+          "Gateway": "172.17.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Containers": {},
+    "Options": {},
+    "Labels": {}
+  },
+  {
+    "Name": "lab",
+    "Id": "9a8b7c6d5e4f",
+    "Created": "2026-09-02T11:30:00.000000000Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "10.8.0.0/24",
+          "IPRange": "10.8.0.128/25",
+          "Gateway": "10.8.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Containers": {},
+    "Options": {},
+    "Labels": {}
+  }
+]

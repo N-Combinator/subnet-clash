@@ -1,0 +1,17 @@
+[connection]
+id=lab-eth
+uuid=8f1d0a3e-0000-4000-8000-000000000001
+type=ethernet
+
+[ethernet]
+
+[ipv4]
+method=manual
+address1=10.20.0.5/24,10.20.0.1
+route1=172.18.0.0/16,10.20.0.1
+dns=1.1.1.1;
+may-fail=false
+
+[ipv6]
+method=auto
+addr-gen-mode=stable-privacy
