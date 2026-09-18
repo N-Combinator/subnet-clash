@@ -98,3 +98,41 @@ def test_duplicate_key_is_rejected_nested_and_inline():
         parse("eth0:\n  addresses: [10.0.0.1/24]\n  addresses:\n    - 10.0.1.1/24\n", "x.yaml")
     assert "duplicate key 'addresses'" in str(excinfo.value)
     assert "x.yaml:3" in str(excinfo.value)
+
+
+def test_anchor_definition_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("eth0:\n  addresses: &lan [10.77.0.1/24]\n", "x.yaml")
+    assert "anchors and aliases" in str(excinfo.value)
+    assert "x.yaml:2" in str(excinfo.value)
+
+
+def test_alias_is_rejected_rather_than_read_as_no_addresses():
+    with pytest.raises(InputError) as excinfo:
+        parse("eth0:\n  addresses: *lan\n", "x.yaml")
+    assert "anchors and aliases" in str(excinfo.value)
+    assert "x.yaml:2" in str(excinfo.value)
+
+
+def test_alias_inside_a_flow_sequence_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("addresses: [10.0.0.1/24, *lan]\n", "x.yaml")
+    assert "anchors and aliases" in str(excinfo.value)
+
+
+def test_alias_as_a_block_sequence_item_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("addresses:\n  - 10.0.0.1/24\n  - *lan\n", "x.yaml")
+    assert "anchors and aliases" in str(excinfo.value)
+    assert "x.yaml:3" in str(excinfo.value)
+
+
+def test_merge_key_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("eth0:\n  <<: *defaults\n", "x.yaml")
+    assert "anchors and aliases" in str(excinfo.value)
+
+
+def test_a_quoted_star_is_still_an_ordinary_string():
+    doc = parse("search: ['*.example.com']\n", "x.yaml")
+    assert [item.value for item in doc.items["search"].items] == ["*.example.com"]

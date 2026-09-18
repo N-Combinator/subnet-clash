@@ -6,9 +6,8 @@ exactly what this module understands. Anything outside that subset raises
 :class:`~subnet_clash.errors.InputError`, so the CLI fails loudly (exit 2) instead of silently
 reading half a file.
 
-Not supported (and rejected or passed through untouched): anchors/aliases, multi-line block
-scalars, multiple documents, duplicate keys, tab indentation, flow mappings (kept as opaque
-scalar text).
+Not supported, and rejected: anchors/aliases, multi-line block scalars, multiple documents,
+duplicate keys, tab indentation. Flow mappings are the one thing kept as opaque scalar text.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from dataclasses import dataclass
 from ..errors import InputError
 
 MULTI_DOC = "multiple YAML documents are not supported"
+ANCHOR = "YAML anchors and aliases are not supported"
 
 
 @dataclass(frozen=True)
@@ -154,10 +154,21 @@ def _split_flow(body: str) -> list[str]:
     return [p for p in (p.strip() for p in parts) if p]
 
 
-def _inline(value: str, lineno: int) -> Node:
-    if value.startswith("[") and value.endswith("]"):
-        return Sequence(lineno, [Scalar(lineno, _unquote(p)) for p in _split_flow(value[1:-1])])
+def _scalar(value: str, lineno: int, filename: str) -> Scalar:
+    """Build a scalar, refusing an anchor definition (``&lan``) or an alias (``*lan``).
+
+    Resolving them would mean implementing a second half of YAML; treating them as ordinary text
+    is worse, because ``addresses: *lan`` then reads as zero addresses and the file looks clean.
+    """
+    if value.startswith(("&", "*")):
+        raise InputError(ANCHOR, f"{filename}:{lineno}")
     return Scalar(lineno, _unquote(value))
+
+
+def _inline(value: str, lineno: int, filename: str) -> Node:
+    if value.startswith("[") and value.endswith("]"):
+        return Sequence(lineno, [_scalar(p, lineno, filename) for p in _split_flow(value[1:-1])])
+    return _scalar(value, lineno, filename)
 
 
 def _parse_block(
@@ -171,7 +182,7 @@ def _parse_block(
             raise InputError(
                 f"expected 'key: value', got {head.content!r}", f"{filename}:{head.lineno}"
             )
-        return Scalar(head.lineno, _unquote(head.content)), pos + 1
+        return _scalar(head.content, head.lineno, filename), pos + 1
     return _parse_mapping(lines, pos, indent, filename)
 
 
@@ -189,7 +200,7 @@ def _parse_mapping(lines: list[_Line], pos: int, indent: int, filename: str) -> 
         if key in items:
             raise InputError(f"duplicate key {key!r}", f"{filename}:{line.lineno}")
         if value:
-            items[key] = _inline(value, line.lineno)
+            items[key] = _inline(value, line.lineno, filename)
             pos += 1
             continue
         nxt = lines[pos + 1] if pos + 1 < len(lines) else None
