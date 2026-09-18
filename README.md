@@ -200,14 +200,21 @@ plus the `intersection` networks:
 ```json
 {
   "kind": "contains",
-  "container": "b",
+  "container": "a",
   "intersection": ["172.17.5.0/24"],
-  "a": { "source": "docker", "range": "172.17.0.0/16", "location": "docker-net.json:14",
+  "a": { "source": "docker", "role": "docker-subnet", "name": "docker network \"bridge\" Subnet",
+         "range": "172.17.0.0/16", "networks": ["172.17.0.0/16"],
+         "location": "docker-net.json:14",
          "file": "docker-net.json", "line": 14, "key": "$[0].IPAM.Config[0].Subnet" },
-  "b": { "source": "wireguard", "range": "172.17.5.0/24", "location": "wg0.conf:15",
+  "b": { "source": "wireguard", "role": "peer-allowedips", "name": "wg0 [Peer #2] AllowedIPs",
+         "range": "172.17.5.0/24", "networks": ["172.17.5.0/24"],
+         "location": "wg0.conf:15",
          "file": "wg0.conf", "line": 15, "key": "[Peer].AllowedIPs" }
 }
 ```
+
+For a `contains` clash, `container` names the side that holds the other: `"a"` here says the
+docker `/16` is the outer range and the WireGuard `/24` sits inside it.
 
 ## Not in v0.1
 
