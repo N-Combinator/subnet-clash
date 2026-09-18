@@ -7,7 +7,8 @@ exactly what this module understands. Anything outside that subset raises
 reading half a file.
 
 Not supported (and rejected or passed through untouched): anchors/aliases, multi-line block
-scalars, multiple documents, tab indentation, flow mappings (kept as opaque scalar text).
+scalars, multiple documents, duplicate keys, tab indentation, flow mappings (kept as opaque
+scalar text).
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..errors import InputError
+
+MULTI_DOC = "multiple YAML documents are not supported"
 
 
 @dataclass(frozen=True)
@@ -71,13 +74,33 @@ def _mkline(lineno: int, indent: int, content: str) -> _Line:
 
 
 def _tokenize(text: str, filename: str) -> list[_Line]:
+    """Split the text into meaningful lines, rejecting anything but a single document.
+
+    A file may open with ``---`` and close with ``...``, but a second document -- another
+    ``---``, or content after the ``...`` -- is refused. Reading only one document out of
+    several is exactly the silent half-read this reader exists to avoid.
+    """
     lines: list[_Line] = []
+    started = False
+    ended = False
     for lineno, raw in enumerate(text.splitlines(), start=1):
         body = _strip_comment(raw).rstrip()
         if not body.strip():
             continue
-        if body.strip() in ("---", "..."):
+        marker = body.strip()
+        if marker == "---":
+            if started or ended:
+                raise InputError(MULTI_DOC, f"{filename}:{lineno}")
+            started = True
             continue
+        if marker == "...":
+            if ended:
+                raise InputError(MULTI_DOC, f"{filename}:{lineno}")
+            ended = True
+            continue
+        if ended:
+            raise InputError(MULTI_DOC, f"{filename}:{lineno}")
+        started = True
         prefix = body[: len(body) - len(body.lstrip(" \t"))]
         if "\t" in prefix:
             raise InputError("tab used for indentation (YAML forbids it)", f"{filename}:{lineno}")
@@ -163,6 +186,8 @@ def _parse_mapping(lines: list[_Line], pos: int, indent: int, filename: str) -> 
                 f"expected 'key: value', got {line.content!r}", f"{filename}:{line.lineno}"
             )
         key, value = split
+        if key in items:
+            raise InputError(f"duplicate key {key!r}", f"{filename}:{line.lineno}")
         if value:
             items[key] = _inline(value, line.lineno)
             pos += 1

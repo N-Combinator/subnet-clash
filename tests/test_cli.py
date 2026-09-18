@@ -77,6 +77,20 @@ def test_tab_indented_yaml_exits_two(capsys):
     assert "tab used for indentation" in err
 
 
+def test_multi_document_netplan_exits_two(capsys):
+    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/multi-doc.yaml")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "multiple YAML documents" in err
+
+
+def test_concatenated_netplan_files_exit_two(capsys):
+    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/concatenated.yaml")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "duplicate key 'network'" in err
+
+
 def test_no_sources_exits_two(capsys):
     code, _out, err = run(capsys, ["check"])
     assert code == EXIT_INPUT_ERROR

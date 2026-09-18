@@ -200,8 +200,10 @@ plus the `intersection` networks:
 - Windows networking and VPNs other than WireGuard are out of scope.
 - dnsmasq `conf-file`/`conf-dir` includes are not followed; name those files yourself.
 - The bundled YAML reader covers the netplan dialect (block mappings, block and flow sequences,
-  plain scalars). Anchors, multi-document files and block scalars are rejected with exit code 2
-  rather than half-read.
+  plain scalars). Anchors, multi-document files, duplicate keys and block scalars are rejected
+  with exit code 2 rather than half-read. Concatenating two netplan files into one is therefore
+  an error (duplicate `network:`), not a silent read of the last one — pass each file with its
+  own `--netplan`.
 
 ## Development
 

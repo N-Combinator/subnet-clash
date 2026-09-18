@@ -65,3 +65,36 @@ def test_line_without_a_key_is_rejected():
     with pytest.raises(InputError) as excinfo:
         parse("network:\n  version 2\n", "x.yaml")
     assert "expected 'key: value'" in str(excinfo.value)
+
+
+def test_a_single_document_may_be_wrapped_in_markers():
+    doc = parse("---\nnetwork:\n  version: 2\n...\n", "x.yaml")
+    assert doc.items["network"].items["version"].value == "2"
+
+
+def test_second_document_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("network:\n  version: 2\n---\nnetwork:\n  version: 2\n", "x.yaml")
+    assert "multiple YAML documents" in str(excinfo.value)
+    assert "x.yaml:3" in str(excinfo.value)
+
+
+def test_content_after_the_end_marker_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("network:\n  version: 2\n...\nnetwork:\n  version: 2\n", "x.yaml")
+    assert "multiple YAML documents" in str(excinfo.value)
+    assert "x.yaml:4" in str(excinfo.value)
+
+
+def test_duplicate_key_is_rejected():
+    with pytest.raises(InputError) as excinfo:
+        parse("network:\n  version: 2\nnetwork:\n  version: 2\n", "x.yaml")
+    assert "duplicate key 'network'" in str(excinfo.value)
+    assert "x.yaml:3" in str(excinfo.value)
+
+
+def test_duplicate_key_is_rejected_nested_and_inline():
+    with pytest.raises(InputError) as excinfo:
+        parse("eth0:\n  addresses: [10.0.0.1/24]\n  addresses:\n    - 10.0.1.1/24\n", "x.yaml")
+    assert "duplicate key 'addresses'" in str(excinfo.value)
+    assert "x.yaml:3" in str(excinfo.value)
