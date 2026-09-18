@@ -1,0 +1,21 @@
+[
+  {
+    "Name": "lab",
+    "Id": "5e4d3c2b1a09",
+    "Driver": "bridge",
+    "Labels": {
+      "com.example.planned-subnet": "10.8.0.0/24",
+      "com.example.planned-iprange": "10.8.0.128/25"
+    },
+    "IPAM": {
+      "Driver": "default",
+      "Config": [
+        {
+          "Subnet": "10.8.0.0/24",
+          "IPRange": "10.8.0.128/25",
+          "Gateway": "10.8.0.1"
+        }
+      ]
+    }
+  }
+]

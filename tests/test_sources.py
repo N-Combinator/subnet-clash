@@ -91,6 +91,21 @@ def test_docker_accepts_a_single_network_object():
     assert entries[0].location.key == "$.IPAM.Config[0].Subnet"
 
 
+def test_docker_line_is_the_value_the_parser_read_not_an_earlier_copy(load):
+    """An earlier label holding the same CIDR must not lend its line to the Subnet."""
+    entries = load("docker", "docker-labels.json")
+    by_key = {entry.location.key: entry for entry in entries}
+    assert by_key["$[0].IPAM.Config[0].Subnet"].location.line == 14
+    assert by_key["$[0].IPAM.Config[0].IPRange"].location.line == 15
+
+
+def test_docker_line_follows_the_value_through_escapes(load):
+    """The offset comes from the parser, so escapes in earlier strings cannot shift it."""
+    payload = '{"Name": "a\\"b", "IPAM": {\n  "Config": [\n    {"Subnet": "10.7.0.0/24"}\n]}}'
+    entries = get_reader("docker")(payload, "escaped.json")
+    assert entries[0].location.line == 3
+
+
 def test_docker_invalid_json_points_at_the_line(load):
     with pytest.raises(InputError) as excinfo:
         load("docker", "bad/broken.json")
