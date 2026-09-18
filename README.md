@@ -8,6 +8,10 @@ leases — each of them correct on its own, and one of them silently eats anothe
 `subnet-clash` reads those files, puts every range on the same table, and tells you which two lines
 fight, quoting the file and line number of both.
 
+Two threads describing exactly this, with the quotes and the dates, are in
+[docs/motivation.md](docs/motivation.md); `tests/test_scenarios.py` rebuilds both from fixture
+files and checks the tool finds the collision.
+
 - **Reads files only.** No sockets, no `docker` or `ip` invocation, no look at the live system.
   Everything it knows comes from paths you name (or stdin), so the same inputs always give the same
   report, on your laptop and in CI.
