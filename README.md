@@ -238,7 +238,10 @@ subnet-clash: warning: dnsmasq.conf:2: dhcp-range names one address and no netma
 ```
 
 Give the line its netmask (`dhcp-range=10.60.0.0,static,255.255.255.0`) and it becomes an ordinary
-range that is compared like any other.
+range that is compared like any other — including when a comment follows it. dnsmasq ends a config
+line at the first unquoted `#`, so `dhcp-range=10.60.0.0,static,255.255.255.0 # tftp clients` is
+read exactly like the line without the note, and a pool is never turned into an undetermined one by
+what someone wrote to the right of it.
 
 ## Not in v0.1
 

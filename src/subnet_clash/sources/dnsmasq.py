@@ -13,6 +13,10 @@ looks at interfaces. Such a line is reported as an undetermined range -- listed,
 compared with nothing -- because inventing a ``/32`` invents findings and dropping the line hides
 one.
 
+Comments are cut at the first unquoted ``#`` anywhere on the line, which is what dnsmasq's own
+config reader does -- ``dhcp-range=10.70.0.0,static,255.255.255.0 # tftp clients`` is the same
+directive with or without the note on the right.
+
 ``conf-file``/``conf-dir`` includes are *not* followed: v0.1 only reads the files you name.
 """
 
@@ -85,11 +89,36 @@ def _parse_dhcp_range(value: str, where: str) -> tuple[str, tuple[Network, ...],
     return single, (), NO_NETMASK
 
 
+def _strip_comment(line: str) -> str:
+    """Cut a trailing comment the way dnsmasq's config reader does: at the first unquoted ``#``.
+
+    Honouring only a ``#`` in column one leaves the comment glued to the last value, where it
+    quietly stops being what it was: ``,255.255.255.0 # tftp clients`` is not a netmask and
+    ``,10.70.0.200 # spare`` is not an address, so a determined pool turns into an undetermined
+    one -- a wrong answer rather than a loud one.
+
+    Quotes are read only to find that ``#``. dnsmasq removes them from the value; we leave the
+    text as it is, because no range spelling we read uses them.
+    """
+    quoted = False
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif char == "#" and not quoted:
+            return line[:index]
+    return line
+
+
 def read(text: str, filename: str) -> list[RangeEntry]:
     entries: list[RangeEntry] = []
     for lineno, raw in enumerate(text.splitlines(), start=1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
+        line = _strip_comment(raw).strip()
+        if not line:
             continue
         matched = _DIRECTIVE.match(line)
         if matched is None or matched.group("key").lower() != "dhcp-range":

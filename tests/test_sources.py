@@ -356,6 +356,34 @@ def test_dnsmasq_range_without_an_address_is_rejected():
     assert "d.conf:1" in str(excinfo.value)
 
 
+def test_dnsmasq_strips_trailing_comments_like_dnsmasq_does(load):
+    """A note on the right of a directive is a comment, not part of the last value."""
+    entries = load("dnsmasq", "dnsmasq-comments.conf")
+    assert located(entries) == {
+        ("192.168.70.100-192.168.70.200", "dnsmasq-comments.conf:2"),
+        ("10.70.0.0/255.255.255.0", "dnsmasq-comments.conf:3"),
+        ("192.168.71.10-192.168.71.50", "dnsmasq-comments.conf:5"),
+        ("192.168.72.10-192.168.72.20", "dnsmasq-comments.conf:6"),
+    }
+    # the comment used to stay glued to the netmask and the range end, which turned a pool whose
+    # extent the file states into an undetermined one
+    assert all(entry.undetermined is None for entry in entries)
+    netmasked = next(e for e in entries if e.location.line == 3)
+    assert [str(n) for n in netmasked.networks] == ["10.70.0.0/24"]
+
+
+def test_dnsmasq_keeps_a_hash_inside_quotes(load):
+    """dnsmasq ends the line at an *unquoted* '#'; a quoted one is part of the value."""
+    entries = load("dnsmasq", "dnsmasq-comments.conf")
+    tagged = next(e for e in entries if e.location.line == 6)
+    assert tagged.raw == "192.168.72.10-192.168.72.20"
+
+
+def test_dnsmasq_comment_only_line_is_not_a_directive(load):
+    entries = load("dnsmasq", "dnsmasq-comments.conf")
+    assert not [e for e in entries if e.location.line in {1, 4}]
+
+
 # --- reading -------------------------------------------------------------------------------
 
 
