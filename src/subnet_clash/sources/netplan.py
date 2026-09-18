@@ -3,6 +3,9 @@
 ``nameservers.addresses`` holds resolver addresses, not local ranges, so it is skipped -- otherwise
 every config that points at 8.8.8.8 would "clash" with somebody's 8.8.8.0/24.
 
+Default routes are read like any other range; ``analyze`` is what puts ``0.0.0.0/0`` and ``::/0``
+aside, so ``--include-default-routes`` can actually bring them back.
+
 Every other shape is either read or refused (exit 2). Quietly skipping a node we do not recognise
 would drop an address from the comparison and still report a clean run.
 """
@@ -27,8 +30,6 @@ DEVICE_GROUPS = (
     "dummy-devices",
     "vrfs",
 )
-
-_SKIP_ROUTE_TARGETS = {"default", "0.0.0.0/0", "::/0"}
 
 
 def _is_empty(node: Node | None) -> bool:
@@ -62,8 +63,18 @@ def _address(item: Node, filename: str) -> Scalar:
     )
 
 
-def _route_target(item: Node, filename: str) -> Scalar | None:
-    """A route's destination, or ``None`` when the route carries no range to compare."""
+def _default_route(route: Mapping) -> str:
+    """The range ``to: default`` stands for, which netplan takes from the route's family.
+
+    A colon in ``via:`` is the family marker -- no IPv4 address has one. With no ``via:`` at all
+    there is nothing to go on, and IPv4 is the overwhelmingly more common case.
+    """
+    via = route.items.get("via")
+    return "::/0" if isinstance(via, Scalar) and ":" in via.value else "0.0.0.0/0"
+
+
+def _route_target(item: Node, filename: str) -> tuple[str, str, int] | None:
+    """A route's destination as ``(text in the file, CIDR, line)``, or ``None`` for no range."""
     if not isinstance(item, Mapping):
         raise InputError("route list item must be a mapping", f"{filename}:{item.line}")
     target = item.items.get("to")
@@ -74,9 +85,9 @@ def _route_target(item: Node, filename: str) -> Scalar | None:
         raise InputError("route 'to:' must be a single address", f"{filename}:{target.line}")
     if not target.value:
         raise InputError("route 'to:' is empty", f"{filename}:{target.line}")
-    if target.value in _SKIP_ROUTE_TARGETS:
-        return None
-    return target
+    if target.value == "default":
+        return target.value, _default_route(item), target.line
+    return target.value, target.value, target.line
 
 
 def _device_entries(device: str, node: Node, filename: str, path: str) -> list[RangeEntry]:
@@ -110,15 +121,16 @@ def _device_entries(device: str, node: Node, filename: str, path: str) -> list[R
             target = _route_target(item, filename)
             if target is None:
                 continue
+            raw, cidr, line = target
             key = f"{path}.routes[{index}].to"
             entries.append(
                 RangeEntry(
                     source="netplan",
                     role="netplan-route",
                     name=f"netplan {device} route",
-                    raw=target.value,
-                    networks=(parse_network(target.value, f"{filename}:{target.line}"),),
-                    location=Location(filename, target.line, key),
+                    raw=raw,
+                    networks=(parse_network(cidr, f"{filename}:{line}"),),
+                    location=Location(filename, line, key),
                     scope=scope,
                 )
             )

@@ -111,6 +111,7 @@ def test_netplan_reads_addresses_and_routes(load):
     entries = load("netplan", "01-netcfg.yaml")
     assert located(entries) == {
         ("192.168.50.1/24", "01-netcfg.yaml:8"),
+        ("default", "01-netcfg.yaml:12"),
         ("172.17.5.0/24", "01-netcfg.yaml:14"),
         ("10.20.0.1/24", "01-netcfg.yaml:18"),
     }
@@ -119,11 +120,25 @@ def test_netplan_reads_addresses_and_routes(load):
     assert "network.bridges.br-lab.addresses[0]" in keys
 
 
-def test_netplan_skips_nameservers_and_default_routes(load):
+def test_netplan_skips_nameservers(load):
     entries = load("netplan", "01-netcfg.yaml")
     raws = {entry.raw for entry in entries}
     assert "1.1.1.1" not in raws and "9.9.9.9" not in raws
-    assert "default" not in raws
+
+
+def test_netplan_reads_default_routes_instead_of_dropping_them(load):
+    """`--include-default-routes` can only work if the reader hands the route over at all."""
+    route = next(e for e in load("netplan", "01-netcfg.yaml") if e.raw == "default")
+    assert [str(n) for n in route.networks] == ["0.0.0.0/0"]
+
+
+def test_netplan_default_route_follows_the_family_of_its_via(load):
+    text = (
+        "network:\n  ethernets:\n    eth0:\n      routes:\n"
+        "        - to: default\n          via: fd00::1\n"
+    )
+    entries = get_reader("netplan")(text, "v6.yaml")
+    assert [str(n) for n in entries[0].networks] == ["::/0"]
 
 
 def test_netplan_devices_are_separate_scopes(load):
@@ -226,9 +241,16 @@ def test_networkmanager_reads_addresses_and_routes(load):
     assert located(entries) == {
         ("10.20.0.5/24", "lab-eth.nmconnection:10"),
         ("172.18.0.0/16", "lab-eth.nmconnection:11"),
+        ("0.0.0.0/0", "lab-eth.nmconnection:12"),
     }
     keys = {entry.location.key for entry in entries}
-    assert keys == {"[ipv4].address1", "[ipv4].route1"}
+    assert keys == {"[ipv4].address1", "[ipv4].route1", "[ipv4].route2"}
+
+
+def test_networkmanager_reads_the_default_route_instead_of_dropping_it(load):
+    """Same as netplan: putting `0.0.0.0/0` aside is the analyzer's job, not the reader's."""
+    entries = load("networkmanager", "lab-eth.nmconnection")
+    assert any(entry.raw == "0.0.0.0/0" for entry in entries)
 
 
 def test_networkmanager_ignores_dns_and_non_ip_sections(load):

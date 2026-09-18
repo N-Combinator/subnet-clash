@@ -122,7 +122,10 @@ report a config for being internally consistent:
 
 `0.0.0.0/0` and `::/0` are put aside instead of compared: a full-tunnel `AllowedIPs = 0.0.0.0/0`
 contains every other range on the table and would bury the report. They are listed in a separate
-section; pass `--include-default-routes` to compare them anyway.
+section; pass `--include-default-routes` to compare them anyway. Every reader hands its default
+routes over for that decision — a WireGuard `AllowedIPs`, a NetworkManager `route1=0.0.0.0/0,…`
+and a netplan `to: default` alike. netplan's `default` keyword means `0.0.0.0/0` or `::/0`
+depending on the family of the route, which is read from its `via:`.
 
 ## Well-known default ranges
 

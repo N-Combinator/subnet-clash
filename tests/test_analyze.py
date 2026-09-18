@@ -83,7 +83,12 @@ def test_docker_iprange_inside_its_own_subnet_is_not_a_clash():
 
 def test_netplan_route_under_its_own_device_is_not_a_clash():
     entries = read_fixture("netplan", "01-netcfg.yaml")
-    assert find_clashes(entries) == []
+    # The device's addresses and its own routes share a scope. The `to: default` route the same
+    # file carries is read too, and set aside by analyze the way a full-tunnel AllowedIPs is --
+    # without that, it would contain every other range in the file.
+    report = analyze(entries)
+    assert report.clashes == []
+    assert [entry.raw for entry in report.skipped_default_routes] == ["default"]
 
 
 def test_default_routes_are_skipped_unless_asked_for():

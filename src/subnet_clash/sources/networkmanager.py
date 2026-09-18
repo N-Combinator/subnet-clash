@@ -1,7 +1,13 @@
 """NetworkManager connection keyfiles (``*.nmconnection``).
 
-NetworkManager stores connections as INI, not YAML, so the keys we care about are
-``[ipv4]/[ipv6]`` ``addressN=<cidr>[,<gateway>]`` and ``routeN=<cidr>[,<next-hop>[,<metric>]]``.
+NetworkManager stores connections in its own keyfile format -- INI, not YAML -- so the keys we
+care about are ``[ipv4]/[ipv6]`` ``addressN=<cidr>[,<gateway>]`` and
+``routeN=<cidr>[,<next-hop>[,<metric>]]``. It is read line by line rather than with
+``configparser`` because a finding has to name the line the range sits on, and ``configparser``
+does not report one.
+
+A default route (``route1=0.0.0.0/0,...``) is read like any other range; ``analyze`` is what
+sets ``0.0.0.0/0`` and ``::/0`` aside, so ``--include-default-routes`` can bring them back.
 """
 
 from __future__ import annotations
@@ -17,7 +23,6 @@ _SECTION = re.compile(r"^\[(?P<name>[^]]+)\]\s*$")
 _KEY_VALUE = re.compile(r"^(?P<key>[^=]+?)\s*=\s*(?P<value>.*)$")
 _ADDRESS_KEY = re.compile(r"^address(?P<index>\d+)$")
 _ROUTE_KEY = re.compile(r"^route(?P<index>\d+)$")
-_SKIP_ROUTE_TARGETS = {"0.0.0.0/0", "::/0"}
 
 
 def read(text: str, filename: str) -> list[RangeEntry]:
@@ -50,7 +55,7 @@ def read(text: str, filename: str) -> list[RangeEntry]:
             role, label = "nm-route", "route"
         else:
             continue
-        if not value or value in _SKIP_ROUTE_TARGETS:
+        if not value:
             continue
         entries.append(
             RangeEntry(

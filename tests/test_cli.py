@@ -278,6 +278,32 @@ def test_include_default_routes(capsys):
     assert json.loads(out)["summary"]["skipped_default_routes"] == 0
 
 
+def test_include_default_routes_covers_netplan_and_networkmanager(capsys):
+    """The flag promises 0.0.0.0/0 and ::/0; the readers must not have thrown them away first."""
+    args = [
+        "check",
+        "--netplan",
+        fixture_path("01-netcfg.yaml"),
+        "--nm",
+        fixture_path("lab-eth.nmconnection"),
+        "--format",
+        "json",
+    ]
+    skipped = json.loads(run(capsys, args)[1])["skipped_default_routes"]
+    assert {entry["file"].split("/")[-1] for entry in skipped} == {
+        "01-netcfg.yaml",
+        "lab-eth.nmconnection",
+    }
+
+    payload = json.loads(run(capsys, [*args, "--include-default-routes"])[1])
+    assert payload["summary"]["skipped_default_routes"] == 0
+    # Both default routes now sit on the table and contain every other range there.
+    contained = {c["a"]["range"] for c in payload["clashes"] if c["kind"] == "contains"} | {
+        c["b"]["range"] for c in payload["clashes"] if c["kind"] == "contains"
+    }
+    assert {"default", "0.0.0.0/0"} <= contained
+
+
 # --- defaults subcommand --------------------------------------------------------------------
 
 
