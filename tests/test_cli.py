@@ -105,6 +105,37 @@ def test_anchor_bomb_netplan_exits_two_instead_of_expanding(capsys):
     assert "expands to more than" in err
 
 
+def test_deeply_nested_netplan_exits_two_instead_of_a_traceback(capsys):
+    """Thousands of nested sequences exhaust the composer's stack; that is still exit 2."""
+    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/deep-nesting.yaml")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "nests too deeply" in err
+    assert "deep-nesting.yaml" in err
+
+
+def test_deeply_nested_docker_json_exits_two(capsys):
+    """The JSON side is recursive too, so it gets the same answer, not a RecursionError."""
+    code, out, err = run(capsys, ["check", "--docker", fixture_path("bad/deep-nesting.json")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "nests too deeply" in err
+    assert "deep-nesting.json" in err
+
+
+def test_recursion_error_outside_the_readers_still_exits_two(capsys, monkeypatch):
+    """The net under everything else: no path out of main() may raise RecursionError."""
+
+    def boom(*_args, **_kwargs):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr("subnet_clash.cli.analyze", boom)
+    code, out, err = run(capsys, ["check", "--wg", fixture_path("wg0.conf")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "nests too deeply" in err
+
+
 def test_flow_written_netplan_is_compared_not_skipped(capsys):
     """Flow mappings, multi-line flow sequences and aliases all have to reach the comparison."""
     code, out, _err = run(

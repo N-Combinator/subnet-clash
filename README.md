@@ -174,7 +174,7 @@ citable source, add the row to `src/subnet_clash/defaults.py` with the link — 
 | --- | --- |
 | `0` | no clashes (warnings about default ranges or undetermined ranges do not change this) |
 | `1` | at least one clash found |
-| `2` | unusable input — missing file, malformed JSON/YAML, invalid CIDR, non-UTF-8 bytes (file or stdin), no sources given — with the file and line on stderr |
+| `2` | unusable input — missing file, malformed JSON/YAML, invalid CIDR, non-UTF-8 bytes (file or stdin), a document nested deeper than the parser's stack, no sources given — with the file and line on stderr |
 
 The split matters in a pipeline: `1` always means "something was found", never "the input could
 not be read", so `docker network inspect ... | subnet-clash check --docker -` on garbage bytes
@@ -183,6 +183,17 @@ exits `2`, not `1`.
 ```console
 $ subnet-clash check --netplan broken.yaml
 subnet-clash: error: broken.yaml:2: invalid YAML: while scanning for the next token: found character '\t' that cannot start any token
+$ echo $?
+2
+```
+
+Nothing reaches you as a traceback, including the input that breaks the parser rather than the
+grammar: both parsers underneath are recursive, so a file that opens a few thousand sequences
+without closing them runs out of stack, and that is reported like any other unusable file.
+
+```console
+$ subnet-clash check --netplan generated.yaml
+subnet-clash: error: generated.yaml: nests too deeply to parse (more levels than the parser's stack allows)
 $ echo $?
 2
 ```

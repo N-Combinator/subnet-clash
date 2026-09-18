@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from . import __version__
 from .analyze import analyze
-from .errors import SubnetClashError
+from .errors import InputError, SubnetClashError
 from .model import RangeEntry
 from .report import defaults_to_json, defaults_to_markdown, to_json, to_markdown
 from .sources import get_reader, read_source
@@ -20,6 +20,12 @@ from .warn import warn
 EXIT_OK = 0
 EXIT_CLASH = 1
 EXIT_INPUT_ERROR = 2
+
+#: A document nested deeper than the interpreter's stack allows. Both parsers underneath are
+#: recursive -- PyYAML's composer and (because the docker reader swaps in the pure-Python string
+#: hook) the JSON scanner -- so a file with a few thousand opening brackets raises RecursionError
+#: rather than returning anything. That is still unusable input, not a crash: exit 2.
+TOO_DEEP = "nests too deeply to parse (more levels than the parser's stack allows)"
 
 #: CLI flag -> source type. Every value is a file path; ``-`` means stdin.
 SOURCE_FLAGS = (
@@ -92,7 +98,12 @@ def _collect(args: argparse.Namespace) -> tuple[list[RangeEntry], list[dict[str,
         raise SubnetClashError("stdin ('-') can only be used for one source")
     for source_type, path in paths:
         display, text = read_source(path)
-        found = get_reader(source_type)(text, display)
+        try:
+            found = get_reader(source_type)(text, display)
+        except RecursionError as exc:
+            # Caught here rather than only in main() so the message can name the file, the way
+            # every other unusable-input message does.
+            raise InputError(TOO_DEEP, display) from exc
         if not found:
             # Every silent half-read found so far looked exactly like this: a file that parsed
             # without complaint and yielded nothing. Say so on stderr; it is not an error, an
@@ -149,6 +160,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_CLASH if report.clashes else EXIT_OK
     except SubnetClashError as exc:
         print(f"subnet-clash: error: {exc}", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    except RecursionError:
+        # The reader path names the file (see _collect); this is the net under everything else,
+        # because a traceback is never a useful answer to "is my config broken?".
+        print(f"subnet-clash: error: input {TOO_DEEP}", file=sys.stderr)
         return EXIT_INPUT_ERROR
     except BrokenPipeError:  # pragma: no cover - depends on the consumer
         return EXIT_OK
