@@ -245,6 +245,18 @@ docker `/16` is the outer range and the WireGuard `/24` sits inside it.
 
   Anything else under `addresses:` or `routes:` — a value that is not a list, a list item that is
   not an address, a `to:` that is not a single address — is exit code 2, never a skipped address.
+- Every key under `network:` is visited, not just the device groups this version knows. netplan
+  adds device types between releases, so an unknown key holding a mapping is read as a device
+  group — its addresses and routes are compared — and named on stderr; an unknown key that cannot
+  hold devices (a scalar, a list) is named on stderr and ignored. `version:` and `renderer:` are
+  known to carry no range and pass without a word.
+
+  ```console
+  $ subnet-clash check --netplan 90-ovs.yaml
+  subnet-clash: warning: 90-ovs.yaml:7: 'network.ovs-bridges:' is not a netplan device group subnet-clash knows; read as one, so its addresses and routes are still compared
+  ```
+
+  The line is the first device in that group, which is where the ranges it contributed start.
 
 ## Development
 

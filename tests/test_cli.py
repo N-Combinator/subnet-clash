@@ -149,6 +149,27 @@ def test_netplan_addresses_that_are_not_a_list_exit_two(capsys):
     assert "'addresses:' must be a list" in err
 
 
+def test_an_unknown_netplan_group_still_reaches_the_comparison(capsys):
+    """The address lives under a group the tool does not know; it must still be compared."""
+    code, out, err = run(
+        capsys,
+        [
+            "check",
+            "--netplan",
+            fixture_path("netplan-unknown-group.yaml"),
+            "--wg",
+            fixture_path("wg-ovs-peer.conf"),
+            "--format",
+            "json",
+        ],
+    )
+    assert code == EXIT_CLASH
+    payload = json.loads(out)
+    pairs = {(c["kind"], c["a"]["range"], c["b"]["range"]) for c in payload["clashes"]}
+    assert ("identical", "10.44.0.1/24", "10.44.0.0/24") in pairs
+    assert "'network.ovs-bridges:'" in err
+
+
 def test_a_source_that_yields_no_ranges_is_reported_on_stderr(capsys, tmp_path):
     empty = tmp_path / "wg-nothing.conf"
     empty.write_text("[Interface]\nPrivateKey = x\n", encoding="utf-8")

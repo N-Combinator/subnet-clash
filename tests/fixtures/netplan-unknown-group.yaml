@@ -1,0 +1,16 @@
+# Written by a netplan newer than this tool: 'ovs-bridges' is not a group we know, and
+# 'experimental' is not a key we know at all.
+network:
+  version: 2
+  renderer: NetworkManager
+  ovs-bridges:
+    ovsbr0:
+      addresses:
+        - 10.44.0.1/24
+      routes:
+        - to: 10.46.0.0/16
+          via: 10.44.0.254
+  ethernets:
+    eth0:
+      addresses: [10.45.0.1/24]
+  experimental: true

@@ -1,13 +1,19 @@
 """netplan YAML: interface ``addresses`` and static ``routes[].to``.
 
+Every key under ``network:`` is visited, not only the device groups listed in
+:data:`DEVICE_GROUPS`. netplan gains device types between releases, and a group this version has
+never heard of still holds devices with addresses in it -- so an unknown mapping is read as a
+device group and named on stderr, rather than dropped without a word.
+
 ``nameservers.addresses`` holds resolver addresses, not local ranges, so it is skipped -- otherwise
 every config that points at 8.8.8.8 would "clash" with somebody's 8.8.8.0/24.
 
 Default routes are read like any other range; ``analyze`` is what puts ``0.0.0.0/0`` and ``::/0``
 aside, so ``--include-default-routes`` can actually bring them back.
 
-Every other shape is either read or refused (exit 2). Quietly skipping a node we do not recognise
-would drop an address from the comparison and still report a clean run.
+Inside a device group every shape is either read or refused (exit 2), and an unknown key under
+``network:`` is warned about. Quietly skipping a node we do not recognise would drop an address
+from the comparison and still report a clean run.
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from __future__ import annotations
 from ..errors import InputError
 from ..model import Location, RangeEntry
 from ..ranges import parse_network
+from ..warn import warn
 from ._yaml import Mapping, Node, Scalar, Sequence, parse
 
 #: netplan groups devices under these keys: ``network.<group>.<device>``
@@ -29,7 +36,11 @@ DEVICE_GROUPS = (
     "virtual-ethernets",
     "dummy-devices",
     "vrfs",
+    "nm-devices",
 )
+
+#: Keys under ``network:`` that are documented and hold no device and no range.
+NON_DEVICE_KEYS = ("version", "renderer")
 
 
 def _is_empty(node: Node | None) -> bool:
@@ -150,13 +161,27 @@ def read(text: str, filename: str) -> list[RangeEntry]:
         raise InputError("'network:' must be a mapping", f"{filename}:{network.line}")
 
     entries: list[RangeEntry] = []
-    for group in DEVICE_GROUPS:
-        devices = network.items.get(group)
-        if devices is None or _is_empty(devices):
+    for group, devices in network.items.items():
+        if group in NON_DEVICE_KEYS or devices is None or _is_empty(devices):
             continue
         if not isinstance(devices, Mapping):
-            raise InputError(
-                f"'{group}:' must be a mapping of device name to settings",
+            if group in DEVICE_GROUPS:
+                raise InputError(
+                    f"'{group}:' must be a mapping of device name to settings",
+                    f"{filename}:{devices.line}",
+                )
+            # Not a device group and not one of the keys we know carries nothing: say so rather
+            # than pass over it in silence, which is what hid a missing address before.
+            warn(
+                f"'network.{group}:' is not a netplan key subnet-clash knows, "
+                "and holds no devices; ignored",
+                f"{filename}:{devices.line}",
+            )
+            continue
+        if group not in DEVICE_GROUPS:
+            warn(
+                f"'network.{group}:' is not a netplan device group subnet-clash knows; "
+                "read as one, so its addresses and routes are still compared",
                 f"{filename}:{devices.line}",
             )
         for device, node in devices.items.items():

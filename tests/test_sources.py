@@ -242,6 +242,32 @@ def test_netplan_device_group_must_be_a_mapping(load):
     assert "must be a mapping of device name to settings" in str(excinfo.value)
 
 
+def test_netplan_unknown_device_group_is_read_not_skipped(load, capsys):
+    """A group this version has never heard of still holds addresses that can clash."""
+    entries = load("netplan", "netplan-unknown-group.yaml")
+    assert located(entries) == {
+        ("10.44.0.1/24", "netplan-unknown-group.yaml:9"),
+        ("10.46.0.0/16", "netplan-unknown-group.yaml:11"),
+        ("10.45.0.1/24", "netplan-unknown-group.yaml:15"),
+    }
+    keys = {entry.location.key for entry in entries}
+    assert "network.ovs-bridges.ovsbr0.addresses[0]" in keys
+    err = capsys.readouterr().err
+    assert "'network.ovs-bridges:'" in err and "read as one" in err
+
+
+def test_netplan_unknown_key_that_holds_no_devices_is_named_on_stderr(load, capsys):
+    load("netplan", "netplan-unknown-group.yaml")
+    err = capsys.readouterr().err
+    assert "'network.experimental:'" in err and "ignored" in err
+    assert "netplan-unknown-group.yaml:16" in err
+
+
+def test_netplan_version_and_renderer_are_not_warned_about(load, capsys):
+    load("netplan", "01-netcfg.yaml")
+    assert capsys.readouterr().err == ""
+
+
 def test_netplan_without_network_key_is_rejected(load):
     with pytest.raises(InputError) as excinfo:
         load("netplan", "bad/no-network.yaml")

@@ -15,6 +15,7 @@ from .errors import SubnetClashError
 from .model import RangeEntry
 from .report import defaults_to_json, defaults_to_markdown, to_json, to_markdown
 from .sources import get_reader, read_source
+from .warn import warn
 
 EXIT_OK = 0
 EXIT_CLASH = 1
@@ -96,10 +97,7 @@ def _collect(args: argparse.Namespace) -> tuple[list[RangeEntry], list[dict[str,
             # Every silent half-read found so far looked exactly like this: a file that parsed
             # without complaint and yielded nothing. Say so on stderr; it is not an error, an
             # empty config is legal, but it should never pass unnoticed.
-            print(
-                f"subnet-clash: warning: {display}: read as {source_type}, no ranges found",
-                file=sys.stderr,
-            )
+            warn(f"read as {source_type}, no ranges found", display)
         entries.extend(found)
         sources.append({"file": display, "type": source_type, "ranges": len(found)})
     return entries, sources
