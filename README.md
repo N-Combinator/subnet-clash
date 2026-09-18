@@ -15,8 +15,13 @@ files and checks the tool finds the collision.
 - **Reads files only.** No sockets, no `docker` or `ip` invocation, no look at the live system.
   Everything it knows comes from paths you name (or stdin), so the same inputs always give the same
   report, on your laptop and in CI.
-- **One dependency.** PyYAML, and only for reading netplan files — netplan is YAML, and a YAML
-  file deserves a YAML parser. Every range computation is standard-library `ipaddress`.
+- **Standard library for the logic, one dependency for YAML.** Every range computation — reading a
+  CIDR, containment, intersection, summarising a start–end pool into networks — is the standard
+  library's `ipaddress` and nothing else. The one third-party package is PyYAML, and it only
+  parses the YAML sources (netplan), because netplan files are YAML and a YAML file deserves a
+  YAML parser rather than a hand-written subset of one. WireGuard and dnsmasq configs,
+  NetworkManager keyfiles (INI, not YAML) and saved `docker network inspect` JSON are read with the
+  standard library alone.
 
 ## Install
 
