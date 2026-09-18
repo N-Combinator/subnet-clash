@@ -92,6 +92,14 @@ def _collect(args: argparse.Namespace) -> tuple[list[RangeEntry], list[dict[str,
     for source_type, path in paths:
         display, text = read_source(path)
         found = get_reader(source_type)(text, display)
+        if not found:
+            # Every silent half-read found so far looked exactly like this: a file that parsed
+            # without complaint and yielded nothing. Say so on stderr; it is not an error, an
+            # empty config is legal, but it should never pass unnoticed.
+            print(
+                f"subnet-clash: warning: {display}: read as {source_type}, no ranges found",
+                file=sys.stderr,
+            )
         entries.extend(found)
         sources.append({"file": display, "type": source_type, "ranges": len(found)})
     return entries, sources

@@ -165,13 +165,25 @@ citable source, add the row to `src/subnet_clash/defaults.py` with the link — 
 | --- | --- |
 | `0` | no clashes (warnings about default ranges do not change this) |
 | `1` | at least one clash found |
-| `2` | unusable input — missing file, malformed JSON/YAML, invalid CIDR, no sources given — with the file and line on stderr |
+| `2` | unusable input — missing file, malformed JSON/YAML, invalid CIDR, non-UTF-8 bytes (file or stdin), no sources given — with the file and line on stderr |
+
+The split matters in a pipeline: `1` always means "something was found", never "the input could
+not be read", so `docker network inspect ... | subnet-clash check --docker -` on garbage bytes
+exits `2`, not `1`.
 
 ```console
 $ subnet-clash check --netplan broken.yaml
 subnet-clash: error: broken.yaml:2: tab used for indentation (YAML forbids it)
 $ echo $?
 2
+```
+
+A file that parses cleanly but contains no ranges at all is not an error — an empty config is
+legal — but it is named on stderr, because that is also what a half-read file looks like:
+
+```console
+$ subnet-clash check --wg keys-only.conf
+subnet-clash: warning: keys-only.conf: read as wireguard, no ranges found
 ```
 
 ## JSON report
@@ -200,10 +212,11 @@ plus the `intersection` networks:
 - Windows networking and VPNs other than WireGuard are out of scope.
 - dnsmasq `conf-file`/`conf-dir` includes are not followed; name those files yourself.
 - The bundled YAML reader covers the netplan dialect (block mappings, block and flow sequences,
-  plain scalars). Anchors, multi-document files, duplicate keys and block scalars are rejected
-  with exit code 2 rather than half-read. Concatenating two netplan files into one is therefore
-  an error (duplicate `network:`), not a silent read of the last one — pass each file with its
-  own `--netplan`.
+  plain scalars). Anchors and aliases (`&lan` / `*lan`, including `<<:` merge keys),
+  multi-document files, duplicate keys and block scalars are rejected with exit code 2 rather
+  than half-read — quote the value if you want a literal `*` or `&`. Concatenating two netplan
+  files into one is therefore an error (duplicate `network:`), not a silent read of the last one
+  — pass each file with its own `--netplan`.
 
 ## Development
 

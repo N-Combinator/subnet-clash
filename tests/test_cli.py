@@ -91,6 +91,21 @@ def test_concatenated_netplan_files_exit_two(capsys):
     assert "duplicate key 'network'" in err
 
 
+def test_anchored_netplan_exits_two_instead_of_reading_zero_addresses(capsys):
+    code, out, err = run(capsys, ["check", "--netplan", fixture_path("bad/anchors.yaml")])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "anchors and aliases" in err
+
+
+def test_a_source_that_yields_no_ranges_is_reported_on_stderr(capsys, tmp_path):
+    empty = tmp_path / "wg-nothing.conf"
+    empty.write_text("[Interface]\nPrivateKey = x\n", encoding="utf-8")
+    code, _out, err = run(capsys, ["check", "--wg", str(empty)])
+    assert code == EXIT_OK
+    assert "no ranges found" in err
+
+
 def test_no_sources_exits_two(capsys):
     code, _out, err = run(capsys, ["check"])
     assert code == EXIT_INPUT_ERROR
