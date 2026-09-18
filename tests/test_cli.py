@@ -177,6 +177,18 @@ def test_docker_json_can_come_from_stdin(capsys, monkeypatch):
     assert any("<stdin>" in (clash["a"]["file"], clash["b"]["file"]) for clash in parsed["clashes"])
 
 
+def test_non_utf8_stdin_exits_two_not_one(capsys, monkeypatch):
+    import io
+
+    # Exit 1 means "clash found", so a decode failure must not come out as 1 (or as a traceback):
+    # a CI job piping `docker network inspect` in could not tell the two apart.
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b'[{"Name": "\xb7bad"}]')))
+    code, out, err = run(capsys, ["check", "--docker", "-"])
+    assert code == EXIT_INPUT_ERROR
+    assert out == ""
+    assert "<stdin>" in err and "not UTF-8" in err
+
+
 def test_stdin_can_only_be_used_once(capsys):
     code, _out, err = run(capsys, ["check", "--docker", "-", "--wg", "-"])
     assert code == EXIT_INPUT_ERROR
