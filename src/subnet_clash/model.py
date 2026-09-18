@@ -30,6 +30,11 @@ class RangeEntry:
     ``scope`` is the logical configuration unit the range belongs to (one docker network, one
     WireGuard peer, one netplan device...). Ranges sharing a scope are never compared against each
     other: a docker ``IPRange`` sitting inside its own ``Subnet`` is the design, not a clash.
+
+    ``undetermined`` holds the reason a line declares a range whose extent the file does not state
+    (a dnsmasq ``dhcp-range`` whose netmask comes from the interface). Such an entry carries no
+    ``networks`` and is never compared: guessing a prefix would invent a finding, and dropping the
+    line would hide one.
     """
 
     source: str
@@ -39,6 +44,7 @@ class RangeEntry:
     networks: tuple[Network, ...]
     location: Location
     scope: str = ""
+    undetermined: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -51,6 +57,7 @@ class RangeEntry:
             "file": self.location.file,
             "line": self.location.line,
             "key": self.location.key,
+            "undetermined": self.undetermined,
         }
 
 
@@ -105,3 +112,4 @@ class Report:
     clashes: list[Clash] = field(default_factory=list)
     warnings: list[DefaultRangeWarning] = field(default_factory=list)
     skipped_default_routes: list[RangeEntry] = field(default_factory=list)
+    undetermined: list[RangeEntry] = field(default_factory=list)

@@ -73,8 +73,13 @@ def analyze(
 ) -> Report:
     kept: list[RangeEntry] = []
     skipped: list[RangeEntry] = []
+    undetermined: list[RangeEntry] = []
     for entry in entries:
-        if not include_default_routes and any(is_default_route(n) for n in entry.networks):
+        if entry.undetermined:
+            # The file does not say how large this range is, so it cannot be compared with
+            # anything; it is reported on its own instead of being guessed at.
+            undetermined.append(entry)
+        elif not include_default_routes and any(is_default_route(n) for n in entry.networks):
             skipped.append(entry)
         else:
             kept.append(entry)
@@ -83,4 +88,5 @@ def analyze(
         clashes=find_clashes(kept),
         warnings=find_default_range_warnings(kept) if check_defaults else [],
         skipped_default_routes=skipped,
+        undetermined=undetermined,
     )

@@ -33,6 +33,7 @@ def _summary(report: Report) -> dict[str, int]:
         "contains": counts.get("contains", 0),
         "default_range_warnings": len(report.warnings),
         "skipped_default_routes": len(report.skipped_default_routes),
+        "undetermined": len(report.undetermined),
     }
 
 
@@ -59,6 +60,7 @@ def to_json(report: Report, sources: list[dict[str, object]]) -> str:
         "clashes": [clash.as_dict() for clash in _sorted_clashes(report)],
         "default_range_warnings": [warning.as_dict() for warning in report.warnings],
         "skipped_default_routes": [entry.as_dict() for entry in report.skipped_default_routes],
+        "undetermined_ranges": [entry.as_dict() for entry in report.undetermined],
     }
     return json.dumps(payload, indent=2, sort_keys=False)
 
@@ -116,6 +118,20 @@ def to_markdown(report: Report, sources: list[dict[str, object]]) -> str:
                 f"| `{warning.entry.raw}` | `{warning.entry.location}` | {warning.relation} "
                 f"| `{warning.default_network}` - {warning.default_name} "
                 f"| {warning.default_source} |"
+            )
+        out.append("")
+
+    if report.undetermined:
+        out.append("## Undetermined ranges")
+        out.append("")
+        out.append(
+            "These lines declare a range whose size is not written in the file, so they were "
+            "not compared with anything."
+        )
+        out.append("")
+        for entry in report.undetermined:
+            out.append(
+                f"- `{entry.raw}` - {entry.name} - `{entry.location}` - {entry.undetermined}"
             )
         out.append("")
 

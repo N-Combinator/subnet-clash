@@ -178,6 +178,31 @@ def test_a_source_that_yields_no_ranges_is_reported_on_stderr(capsys, tmp_path):
     assert "no ranges found" in err
 
 
+def test_an_undetermined_dnsmasq_range_is_reported_and_never_compared(capsys):
+    """A /32 guessed from ``10.60.0.0,static`` would have "clashed" with the peer's /24."""
+    argv = [
+        "check",
+        "--dnsmasq",
+        fixture_path("dnsmasq-nomask.conf"),
+        "--wg",
+        fixture_path("wg-lab.conf"),
+    ]
+    code, out, err = run(capsys, [*argv, "--format", "json"])
+    assert code == EXIT_OK
+    payload = json.loads(out)
+    assert payload["clashes"] == []
+    assert payload["summary"]["undetermined"] == 1
+    undetermined = payload["undetermined_ranges"]
+    assert [(u["range"], u["line"]) for u in undetermined] == [("10.60.0.0", 2)]
+    assert "comes from the interface" in undetermined[0]["undetermined"]
+    assert "comes from the interface" in err
+
+    code, out, _err = run(capsys, argv)
+    assert code == EXIT_OK
+    assert "## Undetermined ranges" in out
+    assert "`10.60.0.0`" in out
+
+
 def test_no_sources_exits_two(capsys):
     code, _out, err = run(capsys, ["check"])
     assert code == EXIT_INPUT_ERROR

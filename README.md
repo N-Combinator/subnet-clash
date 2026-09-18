@@ -42,7 +42,7 @@ subnet-clash check \
 | `--docker` | saved `docker network inspect` JSON | every `IPAM.Config[].Subnet` and `.IPRange` |
 | `--netplan` | netplan YAML | per-device `addresses` (plain and address-options form), static `routes[].to` |
 | `--nm` | NetworkManager keyfile | `[ipv4]`/`[ipv6]` `addressN`, `routeN` |
-| `--dnsmasq` | dnsmasq config | `dhcp-range=` pools |
+| `--dnsmasq` | dnsmasq config | `dhcp-range=` pools (start–end, or a base address with a netmask) |
 
 Every flag is repeatable, and `-` reads that source from stdin (once per run):
 
@@ -168,7 +168,7 @@ citable source, add the row to `src/subnet_clash/defaults.py` with the link — 
 
 | code | meaning |
 | --- | --- |
-| `0` | no clashes (warnings about default ranges do not change this) |
+| `0` | no clashes (warnings about default ranges or undetermined ranges do not change this) |
 | `1` | at least one clash found |
 | `2` | unusable input — missing file, malformed JSON/YAML, invalid CIDR, non-UTF-8 bytes (file or stdin), no sources given — with the file and line on stderr |
 
@@ -193,8 +193,8 @@ subnet-clash: warning: keys-only.conf: read as wireguard, no ranges found
 
 ## JSON report
 
-`--format json` emits `sources`, `summary`, every parsed `ranges` entry, `clashes` and
-`default_range_warnings`. Each clash carries both sides with `file`, `line`, `key` and `location`,
+`--format json` emits `sources`, `summary`, every parsed `ranges` entry, `clashes`,
+`default_range_warnings`, `skipped_default_routes` and `undetermined_ranges`. Each clash carries both sides with `file`, `line`, `key` and `location`,
 plus the `intersection` networks:
 
 ```json
@@ -209,12 +209,32 @@ plus the `intersection` networks:
   "b": { "source": "wireguard", "role": "peer-allowedips", "name": "wg0 [Peer #2] AllowedIPs",
          "range": "172.17.5.0/24", "networks": ["172.17.5.0/24"],
          "location": "wg0.conf:15",
-         "file": "wg0.conf", "line": 15, "key": "[Peer].AllowedIPs" }
+         "file": "wg0.conf", "line": 15, "key": "[Peer].AllowedIPs", "undetermined": null }
 }
 ```
 
 For a `contains` clash, `container` names the side that holds the other: `"a"` here says the
 docker `/16` is the outer range and the WireGuard `/24` sits inside it.
+
+## Ranges whose size the file does not state
+
+`dhcp-range=10.60.0.0,static` names one address and no netmask: dnsmasq takes the prefix from the
+interface it serves the range on, and v0.1 never looks at an interface. Calling that a `/32` would
+be inventing a range — and the invented `/32` sits inside any LAN containing the address, so it
+would manufacture a `contains` finding on every run. Dropping the line would be worse: a real pool
+would vanish from the comparison.
+
+So the line is read, kept, and marked: it is listed under `## Undetermined ranges` in the Markdown
+report and under `undetermined_ranges` in JSON (with the reason in each range's `undetermined`
+field), a warning names it on stderr, and it is compared with nothing.
+
+```console
+$ subnet-clash check --dnsmasq dnsmasq.conf
+subnet-clash: warning: dnsmasq.conf:2: dhcp-range names one address and no netmask, so its size comes from the interface; reported as an undetermined range instead of being guessed at
+```
+
+Give the line its netmask (`dhcp-range=10.60.0.0,static,255.255.255.0`) and it becomes an ordinary
+range that is compared like any other.
 
 ## Not in v0.1
 

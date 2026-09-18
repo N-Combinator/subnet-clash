@@ -328,6 +328,23 @@ def test_dnsmasq_handles_tags_netmask_form_and_ipv6(load):
     assert [str(n) for n in static.networks] == ["10.60.0.0/24"]
 
 
+def test_dnsmasq_single_address_without_a_netmask_is_undetermined(load, capsys):
+    """``dhcp-range=10.60.0.0,static`` is not a /32 -- dnsmasq takes the prefix from the link."""
+    entries = load("dnsmasq", "dnsmasq-nomask.conf")
+    static = next(e for e in entries if e.location.line == 2)
+    assert static.raw == "10.60.0.0"
+    assert static.networks == ()
+    assert "comes from the interface" in static.undetermined
+    assert "dnsmasq-nomask.conf:2" in capsys.readouterr().err
+
+
+def test_dnsmasq_pools_with_a_netmask_or_bounds_stay_determined(load):
+    entries = load("dnsmasq", "dnsmasq-nomask.conf")
+    bounded = next(e for e in entries if e.location.line == 3)
+    assert bounded.undetermined is None
+    assert bounded.networks
+
+
 def test_dnsmasq_ignores_other_directives(load):
     entries = load("dnsmasq", "dnsmasq-static.conf")
     assert all(entry.location.key == "dhcp-range" for entry in entries)

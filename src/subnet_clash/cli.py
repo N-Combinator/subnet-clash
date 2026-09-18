@@ -99,7 +99,15 @@ def _collect(args: argparse.Namespace) -> tuple[list[RangeEntry], list[dict[str,
             # empty config is legal, but it should never pass unnoticed.
             warn(f"read as {source_type}, no ranges found", display)
         entries.extend(found)
-        sources.append({"file": display, "type": source_type, "ranges": len(found)})
+        unknown = sum(1 for entry in found if entry.undetermined)
+        sources.append(
+            {
+                "file": display,
+                "type": source_type,
+                "ranges": len(found) - unknown,
+                "undetermined": unknown,
+            }
+        )
     return entries, sources
 
 
