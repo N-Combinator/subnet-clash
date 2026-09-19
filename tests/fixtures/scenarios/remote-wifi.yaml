@@ -1,0 +1,11 @@
+# The Wi-Fi at the other end: a hotel/office network that hands out 192.168.1.x,
+# the same block the tunnel routes home.
+network:
+  version: 2
+  wifis:
+    wlan0:
+      dhcp4: false
+      addresses:
+        - 192.168.1.34/24
+      nameservers:
+        addresses: [192.168.1.1]

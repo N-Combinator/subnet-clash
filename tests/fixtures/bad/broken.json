@@ -1,0 +1,6 @@
+[
+  {
+    "Name": "bridge",
+    "IPAM": { "Config": [ { "Subnet": "172.17.0.0/16" } ] },
+  }
+]

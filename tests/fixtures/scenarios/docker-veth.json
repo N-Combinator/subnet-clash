@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "adguard",
+    "Id": "c0ffee1234ab",
+    "Driver": "bridge",
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "192.168.16.0/20",
+          "Gateway": "192.168.16.1"
+        }
+      ]
+    }
+  }
+]

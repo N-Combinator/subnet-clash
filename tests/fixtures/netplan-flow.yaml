@@ -1,0 +1,16 @@
+# Legal YAML that has to be read, not skipped: a device written as a flow mapping, a flow
+# sequence spread over several lines, a route as an inline mapping, and an alias reusing an
+# anchored address list.
+network:
+  version: 2
+  ethernets:
+    eth0: {addresses: &lan [10.30.0.1/24], dhcp4: false}
+    eth1:
+      addresses: [
+        10.31.0.1/24,
+        10.32.0.1/24,
+      ]
+      routes:
+        - {to: 10.33.0.0/16, via: 10.31.0.254}
+    eth2:
+      addresses: *lan

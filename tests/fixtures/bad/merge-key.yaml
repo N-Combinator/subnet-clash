@@ -1,0 +1,9 @@
+# A merge key is not resolved by the composer, so reading this file as-is would lose eth0's
+# addresses without a word.
+defaults: &defaults
+  addresses: [10.70.0.1/24]
+network:
+  version: 2
+  ethernets:
+    eth0:
+      <<: *defaults

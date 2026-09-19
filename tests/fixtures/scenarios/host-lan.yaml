@@ -1,0 +1,11 @@
+# The host's own LAN, inside the block docker handed to the container network.
+network:
+  version: 2
+  ethernets:
+    eno1:
+      dhcp4: false
+      addresses:
+        - 192.168.20.10/24
+      routes:
+        - to: default
+          via: 192.168.20.1

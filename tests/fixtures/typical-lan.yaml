@@ -1,0 +1,11 @@
+# A laptop wired to a stock home router and running a swarm node on the side: both interfaces
+# sit on a range something else hands out by default.
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - 192.168.1.24/24
+    eth1:
+      addresses:
+        - 10.0.0.9/24
