@@ -2,9 +2,11 @@
 
 House rule for this table (from the v0.1 spec): **a row exists only if it carries a link to a
 source that documents the range.** Ranges that are folklore-common but that we could not tie to a
-published document are deliberately absent -- see README, "Why 192.168.1.0/24 is not in the table".
+published document are deliberately absent -- see README, "What keeps a range out of the table".
 
-Every ``source`` below was fetched and checked to actually mention its range on 2026-09-18.
+Every ``source`` below was fetched and checked to actually mention its range on the day its row
+was added: 2026-09-18 for the original rows, 2026-09-19 for ``10.0.0.0/24`` and
+``192.168.1.0/24``.
 """
 
 from __future__ import annotations
@@ -75,6 +77,13 @@ DEFAULT_RANGES: tuple[DefaultRange, ...] = (
         "https://docs.docker.com/engine/network/",
     ),
     DefaultRange(
+        _n("10.0.0.0/24"),
+        "Docker Swarm: lowest /24 of the `10.0.0.0/8` global-scope default pool"
+        " that overlay networks are carved out of",
+        "assignment",
+        "https://github.com/moby/moby/blob/master/daemon/libnetwork/ipamutils/utils.go",
+    ),
+    DefaultRange(
         _n("10.96.0.0/12"),
         "Kubernetes: kubeadm default service CIDR (`--service-cidr`)",
         "assignment",
@@ -92,6 +101,13 @@ DEFAULT_RANGES: tuple[DefaultRange, ...] = (
         " (virbr0, 192.168.122.1/255.255.255.0)",
         "assignment",
         "https://wiki.libvirt.org/VirtualNetworking.html",
+    ),
+    DefaultRange(
+        _n("192.168.1.0/24"),
+        "pfSense: the LAN network of a fresh install (192.168.1.1, mask 255.255.255.0);"
+        " the classic home-router LAN",
+        "assignment",
+        "https://docs.netgate.com/pfsense/en/latest/network/subnets.html",
     ),
     DefaultRange(
         _n("192.168.56.0/24"),

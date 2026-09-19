@@ -152,9 +152,11 @@ range.** No link, no row.
 | `172.24.0.0/14` | pool | Docker: fifth default address pool | https://docs.docker.com/engine/network/ |
 | `172.28.0.0/14` | pool | Docker: sixth default address pool | https://docs.docker.com/engine/network/ |
 | `192.168.0.0/16` | pool | Docker: last default address pool, carved into /20s | https://docs.docker.com/engine/network/ |
+| `10.0.0.0/24` | assignment | Docker Swarm: lowest /24 of the `10.0.0.0/8` global-scope default pool that overlay networks are carved out of | https://github.com/moby/moby/blob/master/daemon/libnetwork/ipamutils/utils.go |
 | `10.96.0.0/12` | assignment | Kubernetes: kubeadm default service CIDR (`--service-cidr`) | https://kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm-init/ |
 | `10.244.0.0/16` | assignment | Flannel: default pod network for the documented kube-flannel manifest | https://github.com/flannel-io/flannel/blob/master/Documentation/kubernetes.md |
 | `192.168.122.0/24` | assignment | libvirt: the `default` NAT network created on install (virbr0, 192.168.122.1/255.255.255.0) | https://wiki.libvirt.org/VirtualNetworking.html |
+| `192.168.1.0/24` | assignment | pfSense: the LAN network of a fresh install (192.168.1.1, mask 255.255.255.0); the classic home-router LAN | https://docs.netgate.com/pfsense/en/latest/network/subnets.html |
 | `192.168.56.0/24` | assignment | VirtualBox: default host-only network | https://www.virtualbox.org/manual/topics/networkingdetails.html |
 | `100.64.0.0/10` | pool | Shared address space (CGNAT); Tailscale assigns node addresses from it | https://tailscale.com/kb/1015/100.x-addresses |
 | `10.192.122.0/24` | assignment | WireGuard: the example tunnel subnet in the wg-quick(8) man page | https://man7.org/linux/man-pages/man8/wg-quick.8.html |
@@ -165,13 +167,19 @@ range.** No link, no row.
 `kind` is `assignment` for a network some tool actually creates, and `pool` for a block a tool
 auto-allocates smaller networks out of.
 
-### Why 192.168.1.0/24 is not in the table
+### What keeps a range out of the table
 
-It is the most common home-router LAN there is, and it is exactly the kind of range this table
-wants. But the rule above is the rule: RFC 1918 reserves `192.168.0.0/16` without blessing any
-particular `/24`, and no vendor document was found that states `192.168.1.0/24` as a published
-default. Rather than cite something weaker than the other rows, the row is left out. If you have a
-citable source, add the row to `src/subnet_clash/defaults.py` with the link — that is all it takes.
+The rule above is the whole filter, and it is a filter on *evidence*, not on how common a range
+is. `10.0.0.0/24` and `192.168.1.0/24` are the two ranges most people would name first, and both
+are in the table because a published document states them: moby's `ipamutils` splits the
+`10.0.0.0/8` global-scope pool into `/24`s starting at `10.0.0.0/24`, and Netgate's documentation
+states the network address of a fresh pfSense LAN. What stays out is the folklore that nobody
+publishes — `192.168.2.0/24` as "the second router", `10.10.10.0/24` as "the lab" — because
+there is no vendor document to point at, only habit. The same goes for a whole RFC 1918 block:
+`192.168.0.0/16` earns a row as Docker's last default *pool*, not as a range anything assigns.
+
+If you have a citable source for a range that is missing, add the row to
+`src/subnet_clash/defaults.py` with the link — that is all it takes.
 
 ## Exit codes
 

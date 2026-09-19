@@ -32,6 +32,27 @@ def test_a_range_inside_a_known_default_is_flagged_as_inside():
     assert ("172.17.5.0/24", "172.17.0.0/16", "inside") in hits
 
 
+def test_the_two_ranges_the_spec_names_by_hand_are_flagged():
+    """Criterion 4 names 10.0.0.0/24 and 192.168.1.0/24 itself; both carry a cited row."""
+    report = analyze(read_fixture("netplan", "typical-lan.yaml"))
+    hits = {(w.entry.raw, str(w.default_network), w.relation) for w in report.warnings}
+    assert ("10.0.0.9/24", "10.0.0.0/24", "identical") in hits
+    assert ("192.168.1.24/24", "192.168.1.0/24", "identical") in hits
+
+
+def test_a_range_inside_the_swarm_default_is_flagged_as_inside():
+    report = analyze(read_fixture("dnsmasq", "dnsmasq-swarm-lan.conf"))
+    hits = {(w.entry.raw, str(w.default_network), w.relation) for w in report.warnings}
+    assert ("10.0.0.50-10.0.0.150", "10.0.0.0/24", "inside") in hits
+
+
+def test_a_wireguard_peer_routing_the_home_lan_is_flagged():
+    """The home LAN reaches the table from a different source type than the netplan fixture."""
+    report = analyze(read_fixture("wireguard", "scenarios/wg-home.conf"))
+    hits = {(w.entry.raw, str(w.default_network), w.relation) for w in report.warnings}
+    assert ("192.168.1.0/24", "192.168.1.0/24", "identical") in hits
+
+
 def test_every_warning_carries_the_source_link():
     report = analyze(read_fixture("docker", "docker-net.json"))
     assert report.warnings

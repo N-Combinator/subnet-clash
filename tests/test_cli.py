@@ -366,6 +366,19 @@ def test_stdin_can_only_be_used_once(capsys):
 # --- flags ----------------------------------------------------------------------------------
 
 
+def test_the_typical_ranges_warn_from_the_cli(capsys):
+    """A stock home LAN and a 10.0.0.0/24 LAN in one netplan file: both named by criterion 4."""
+    code, out, _err = run(
+        capsys, ["check", "--netplan", fixture_path("typical-lan.yaml"), "--format", "json"]
+    )
+    assert code == EXIT_OK
+    warnings = json.loads(out)["default_range_warnings"]
+    flagged = {(w["entry"]["range"], w["default"]["network"], w["relation"]) for w in warnings}
+    assert ("10.0.0.9/24", "10.0.0.0/24", "identical") in flagged
+    assert ("192.168.1.24/24", "192.168.1.0/24", "identical") in flagged
+    assert all(w["default"]["source"].startswith("https://") for w in warnings)
+
+
 def test_no_default_check_drops_the_warnings(capsys):
     _code, out, _err = run(capsys, [*ALL_SOURCES, "--format", "json", "--no-default-check"])
     assert json.loads(out)["default_range_warnings"] == []
