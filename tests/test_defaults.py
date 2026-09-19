@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from conftest import read_fixture
 from subnet_clash.analyze import analyze
 from subnet_clash.defaults import DEFAULT_RANGES, KINDS
@@ -51,6 +54,15 @@ def test_a_wireguard_peer_routing_the_home_lan_is_flagged():
     report = analyze(read_fixture("wireguard", "scenarios/wg-home.conf"))
     hits = {(w.entry.raw, str(w.default_network), w.relation) for w in report.warnings}
     assert ("192.168.1.0/24", "192.168.1.0/24", "identical") in hits
+
+
+def test_the_readme_table_lists_exactly_the_rows_in_the_code():
+    """The README table is the published copy of DEFAULT_RANGES; drift between them is a bug."""
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    rows = re.findall(
+        r"^\| `(\S+)` \| (assignment|pool) \| .+ \| (https://\S+) \|$", readme, re.MULTILINE
+    )
+    assert rows == [(str(d.network), d.kind, d.source) for d in DEFAULT_RANGES]
 
 
 def test_every_warning_carries_the_source_link():
