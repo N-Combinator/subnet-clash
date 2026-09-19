@@ -51,7 +51,7 @@ subnet-clash check \
 | `--docker` | saved `docker network inspect` JSON | every `IPAM.Config[].Subnet` and `.IPRange` |
 | `--netplan` | netplan YAML | per-device `addresses` (plain and address-options form), static `routes[].to` |
 | `--nm` | NetworkManager keyfile | `[ipv4]`/`[ipv6]` `addressN`, `routeN` |
-| `--dnsmasq` | dnsmasq config | `dhcp-range=` pools (start–end, or a base address with a netmask) |
+| `--dnsmasq` | dnsmasq config | `dhcp-range=` pools (start–end, or a base address with a netmask; modes, broadcast addresses and lease times are skipped) |
 
 Every flag is repeatable, and `-` reads that source from stdin (once per run):
 
@@ -262,10 +262,19 @@ subnet-clash: warning: dnsmasq.conf:2: dhcp-range names one address and no netma
 ```
 
 Give the line its netmask (`dhcp-range=10.60.0.0,static,255.255.255.0`) and it becomes an ordinary
-range that is compared like any other — including when a comment follows it. dnsmasq ends a config
-line at the first unquoted `#`, so `dhcp-range=10.60.0.0,static,255.255.255.0 # tftp clients` is
-read exactly like the line without the note, and a pool is never turned into an undetermined one by
-what someone wrote to the right of it.
+range that is compared like any other.
+
+The fields of a `dhcp-range` are read in the order dnsmasq documents them —
+`<start-addr>[,<end-addr>|<mode>][,<netmask>[,<broadcast>]][,<lease time>]` — so a longer spelling
+of a pool describes the same pool. In
+`dhcp-range=192.168.90.0,static,255.255.255.0,192.168.90.255`, `255.255.255.0` is the netmask and
+`192.168.90.255` the broadcast address; neither is the end of the pool, which `static` says this
+line does not give. The pool is `192.168.90.0/24`.
+
+A comment does not change a line either. dnsmasq ends a config line at the first unquoted `#`, so
+`dhcp-range=10.60.0.0,static,255.255.255.0 # tftp clients` is read exactly like the line without
+the note, and a pool is never turned into an undetermined one by what someone wrote to the right
+of it.
 
 ## Not in v0.1
 
