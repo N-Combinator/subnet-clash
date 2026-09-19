@@ -345,6 +345,34 @@ def test_dnsmasq_pools_with_a_netmask_or_bounds_stay_determined(load):
     assert bounded.networks
 
 
+def test_dnsmasq_reads_the_netmask_past_a_mode_keyword_and_a_broadcast(load):
+    """``<start>,static,<netmask>,<broadcast>``: the third IP on the line is the broadcast."""
+    entries = load("dnsmasq", "dnsmasq-fields.conf")
+    static = next(e for e in entries if e.location.line == 4)
+    assert static.raw == "192.168.90.0/255.255.255.0"
+    assert [str(n) for n in static.networks] == ["192.168.90.0/24"]
+
+
+def test_dnsmasq_start_end_form_ignores_the_netmask_broadcast_and_lease(load):
+    """``<start>,<end>,<netmask>,<broadcast>,<lease>``: the bounds are the first two IPs."""
+    entries = load("dnsmasq", "dnsmasq-fields.conf")
+    pool = next(e for e in entries if e.location.line == 5)
+    assert pool.raw == "192.168.91.50-192.168.91.150"
+    assert sum(n.num_addresses for n in pool.networks) == 101
+
+
+def test_dnsmasq_reads_the_same_fields_after_a_tag_and_another_mode(load):
+    entries = load("dnsmasq", "dnsmasq-fields.conf")
+    proxied = next(e for e in entries if e.location.line == 6)
+    assert [str(n) for n in proxied.networks] == ["192.168.92.0/24"]
+
+
+def test_dnsmasq_never_stretches_a_pool_to_the_netmask(load):
+    """Pairing the start address with the netmask made a pool of a billion addresses."""
+    entries = load("dnsmasq", "dnsmasq-fields.conf")
+    assert max(sum(n.num_addresses for n in e.networks) for e in entries) == 256
+
+
 def test_dnsmasq_ignores_other_directives(load):
     entries = load("dnsmasq", "dnsmasq-static.conf")
     assert all(entry.location.key == "dhcp-range" for entry in entries)

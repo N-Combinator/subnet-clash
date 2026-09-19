@@ -259,6 +259,53 @@ def test_a_commented_dnsmasq_pool_is_still_compared(capsys):
     assert (clash["b"]["line"], clash["b"]["range"]) == (2, "10.70.0.1/24")
 
 
+def test_a_broadcast_address_does_not_stretch_a_dnsmasq_pool(capsys):
+    """`<start>,static,<netmask>,<broadcast>` used to pair the start with the netmask as the end.
+
+    The invented 192.168.0.0-255.255.255.0 range holds any LAN above 192.168.0.0, so an unrelated
+    host reported a `contains` clash and the run exited 1 while the real /24 was never compared.
+    """
+    code, out, _err = run(
+        capsys,
+        [
+            "check",
+            "--dnsmasq",
+            fixture_path("dnsmasq-fields.conf"),
+            "--netplan",
+            fixture_path("typical-lan.yaml"),
+            "--no-default-check",
+            "--format",
+            "json",
+        ],
+    )
+    payload = json.loads(out)
+    assert payload["clashes"] == []
+    assert code == EXIT_OK
+
+
+def test_a_pool_written_with_a_broadcast_is_still_compared_as_itself(capsys):
+    code, out, _err = run(
+        capsys,
+        [
+            "check",
+            "--dnsmasq",
+            fixture_path("dnsmasq-fields.conf"),
+            "--wg",
+            fixture_path("wg-broadcast-form.conf"),
+            "--no-default-check",
+            "--format",
+            "json",
+        ],
+    )
+    assert code == EXIT_CLASH
+    payload = json.loads(out)
+    assert len(payload["clashes"]) == 1
+    clash = payload["clashes"][0]
+    assert clash["kind"] == "identical"
+    assert (clash["a"]["line"], clash["a"]["range"]) == (4, "192.168.90.0/255.255.255.0")
+    assert (clash["b"]["line"], clash["b"]["range"]) == (3, "192.168.90.1/24")
+
+
 def test_no_sources_exits_two(capsys):
     code, _out, err = run(capsys, ["check"])
     assert code == EXIT_INPUT_ERROR
